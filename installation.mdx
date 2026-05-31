@@ -41,7 +41,7 @@ Prowl.Paper ships with multi-targeted binaries, so you get native TFM support wi
 | `net10.0` | ✅ |
 | `netstandard2.1` | ✅ |
 
-The `netstandard2.1` target makes the library usable from any runtime that implements that standard, including Unity (with IL2CPP) and other non-Microsoft runtimes.
+The `netstandard2.1` target makes the library usable from any runtime that implements that standard, broadening compatibility across the .NET ecosystem.
 
 ## Understanding Renderer Backends
 
@@ -258,15 +258,15 @@ Use `canvas.Vertices` and `canvas.Indices` to access the geometry, and `drawCall
 
 ## Font Setup
 
-Fonts are managed through `FontAtlasSettings` (passed to the `Paper` constructor) and registered at runtime via `AddFallbackFont`.
+Fonts are managed through `FontAtlasSettings` (passed to the `Paper` constructor) and registered at runtime via `AddFallbackFont`. `FontFile` is constructed from a stream pointing to a TTF or OTF file.
 
 ```csharp
 // 1. Create Paper with default atlas settings
 var paper = new Paper(renderer, width, height, new FontAtlasSettings());
 
 // 2. Load a TTF/OTF font from disk and register it
-var fontBytes = File.ReadAllBytes("path/to/font.ttf");
-var fontFile = FontFile.FromBytes(fontBytes);
+using var stream = File.OpenRead("path/to/font.ttf");
+var fontFile = new FontFile(stream);
 paper.AddFallbackFont(fontFile);
 
 // 3. Use the font in text declarations

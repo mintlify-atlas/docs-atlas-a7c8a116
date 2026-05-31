@@ -79,7 +79,7 @@ Paper.Box("Element")
 In the example above, when `isDisabled` is `true` the disabled color takes precedence over the hover color, because `.If(isDisabled)` comes after `.Hovered` in the chain.
 
 <Note>
-`.Hovered`, `.Active`, and `.Focused` are implemented as `.If(Paper.IsElementHovered(...))` and friends — there is nothing special about them beyond convenience.
+`.Hovered`, `.Active`, and `.Focused` each open a `StateDrivenStyle` block conditioned on `paper.IsElementHovered(...)`, `paper.IsElementActive(...)`, or `paper.IsElementFocused(...)` respectively — there is nothing special about them beyond convenience.
 </Note>
 
 ## Named styles and `.Style()`

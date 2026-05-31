@@ -1,5 +1,5 @@
 ---
-title: "Element Hierarchy and the Element Stack"
+title: "Paper Element Hierarchy, Stack, and ID Management Guide"
 sidebarTitle: "Hierarchy"
 description: "Understand how Paper builds its element tree each frame using Box, Row, and Column, how Enter() scopes children, and how to manage IDs safely in loops."
 ---
@@ -92,19 +92,21 @@ The root element is always on the bottom of the stack and is never popped. It co
 `ElementHandle` is a readonly struct that identifies a single element. It holds a reference to the owning `Paper` instance and an integer index into the element array. You can use it to access the element's layout data after the frame, pass it to storage APIs, or add custom render actions.
 
 ```csharp
-// Capture the handle at declaration time
-ElementHandle myPanel;
+// Capture the handle at declaration time — grab it from the builder before calling Enter()
+var panelBuilder = paper.Column("Panel").BackgroundColor(Color.Gray);
+ElementHandle myPanel = panelBuilder._handle;
 
-using (var builder = paper.Column("Panel").BackgroundColor(Color.Gray).Enter())
+using (panelBuilder.Enter())
 {
-    myPanel = builder._handle;  // grab before the using block ends
     paper.Box("Child").Size(50).BackgroundColor(Color.Blue);
 }
 
-// Use the handle to read layout data after EndFrame
+// Use the handle to read layout data after layout runs
 paper.OnEndOfFramePostLayout += () =>
 {
-    var rect = myPanel.Data.LayoutRect;
+    var rect = new Rect(myPanel.Data.X, myPanel.Data.Y,
+                        myPanel.Data.X + myPanel.Data.LayoutWidth,
+                        myPanel.Data.Y + myPanel.Data.LayoutHeight);
     Console.WriteLine($"Panel is at {rect}");
 };
 ```

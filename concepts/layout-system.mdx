@@ -1,5 +1,5 @@
 ---
-title: "Layout Engine: Rows, Columns, and Sizing"
+title: "Paper Layout Engine: Rows, Columns, and Sizing Guide"
 sidebarTitle: "Layout System"
 description: "A complete guide to Paper's Morphorm-based layout engine: LayoutType, PositionType, sizing, margins, padding, alignment recipes, and ContentSizer."
 ---
@@ -270,7 +270,7 @@ using (paper.Column("Card")
     .Padding(paper.Pixels(16))
     .BackgroundColor(Color.White)
     .Rounded(12)
-    .ColBetween(paper.Pixels(8))
+    .RowBetween(paper.Pixels(8))
     .Enter())
 {
     paper.Box("Title")

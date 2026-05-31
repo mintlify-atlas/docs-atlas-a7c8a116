@@ -31,14 +31,12 @@ StyleTemplate btn = paper.DefineStyle("button")
 ### ApplyTo (ElementHandle)
 
 ```csharp
-public StyleTemplate ApplyTo(ElementHandle element)
+public void ApplyTo(ElementHandle element)
 ```
 
 Applies all properties stored in this template to `element`'s style. Properties not set by the template are left at their current (or default) values.
 
 <ParamField path="element" type="ElementHandle" required>The element to style.</ParamField>
-
-<ResponseField name="return" type="StyleTemplate">Returns `this` for fluent chaining.</ResponseField>
 
 ### ApplyTo (StyleTemplate)
 
@@ -92,6 +90,10 @@ Creates a template pre-populated with all properties from the listed parent styl
 </ParamField>
 
 <ResponseField name="return" type="StyleTemplate">The new combined template.</ResponseField>
+
+<Warning>
+  Throws `ArgumentException` if any name in `inheritFrom` has not already been registered. Always call `DefineStyle` or `RegisterStyle` for parent styles before defining styles that inherit from them.
+</Warning>
 
 ```csharp
 paper.DefineStyle("base-button")

@@ -1,14 +1,14 @@
 ---
 title: "Event Types Reference: Click, Drag, Key, Focus, and Scroll"
 sidebarTitle: "Event Types"
-description: "Complete reference for all Prowl.Paper event types — ClickEvent, DragEvent, ElementEvent, FocusEvent, KeyEvent, ScrollEvent, TextInputEvent, and the PaperKey enum."
+description: "Complete reference for all Prowl.Paper event types — ClickEvent, DragEvent, ElementEvent, FocusEvent, KeyEvent, ScrollEvent, and TextInputEvent."
 ---
 
 Prowl.Paper dispatches strongly typed event objects to element callbacks. Every callback receives a concrete event class whose fields describe what happened — mouse position, key pressed, drag delta, and so on. All pointer-based events derive from `ElementEvent`, which provides common spatial data. This page documents every event type, the callback that delivers it, and every public field on each class.
 
 ## Inheritance overview
 
-```
+```text
 ElementEvent                    ← base class for all pointer events
   ├── ClickEvent                ← OnClick, OnPress, OnHeld, OnRelease, OnDoubleClick, OnRightClick
   ├── DragEvent                 ← OnDragStart, OnDragging, OnDragEnd
@@ -375,36 +375,28 @@ public enum PaperKey
 {
     Unknown = 0,
 
-    // Alphabetic
+    // Alphanumeric keys
     A, B, C, D, E, F, G, H, I, J, K, L, M,
     N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
 
-    // Digits (top row)
-    Num1, Num2, Num3, Num4, Num5,
-    Num6, Num7, Num8, Num9, Num0,
+    Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9, Num0,
 
     // Function keys
-    F1, F2, F3, F4, F5, F6,
-    F7, F8, F9, F10, F11, F12,
+    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
 
-    // Editing & navigation
+    // Special keys
     Enter, Escape, Backspace, Tab, Space,
-    Insert, Home, PageUp, Delete, End, PageDown,
-    Right, Left, Down, Up,
-
-    // Punctuation & symbols
     Minus, Equals, LeftBracket, RightBracket, Backslash,
     Semicolon, Apostrophe, Grave, Comma, Period, Slash,
 
-    // Lock & system
     CapsLock, PrintScreen, ScrollLock, Pause,
+    Insert, Home, PageUp, Delete, End, PageDown,
+    Right, Left, Down, Up,
 
-    // Numpad
-    NumLock,
-    KeypadDivide, KeypadMultiply, KeypadMinus, KeypadPlus,
-    KeypadEnter, KeypadEquals, KeypadDecimal,
-    Keypad0, Keypad1, Keypad2, Keypad3, Keypad4,
-    Keypad5, Keypad6, Keypad7, Keypad8, Keypad9,
+    // Keypad
+    NumLock, KeypadDivide, KeypadMultiply, KeypadMinus, KeypadPlus, KeypadEnter, KeypadEquals,
+    Keypad1, Keypad2, Keypad3, Keypad4, Keypad5, Keypad6, Keypad7, Keypad8, Keypad9, Keypad0,
+    KeypadDecimal,
 
     // Modifier keys
     LeftControl, LeftShift, LeftAlt, LeftSuper,
@@ -413,7 +405,7 @@ public enum PaperKey
     // Media keys
     AudioNext, AudioPrevious, AudioStop, AudioPlay, AudioMute,
 
-    // Application keys
+    // Application control keys
     Application, Menu, Select, Help
 }
 ```

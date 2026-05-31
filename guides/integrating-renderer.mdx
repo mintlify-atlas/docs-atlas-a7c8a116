@@ -1,7 +1,7 @@
 ---
-title: "Integrating a Custom Renderer Backend for Paper"
+title: "Integrating a Custom Renderer Backend with Prowl.Paper"
 sidebarTitle: "Custom Renderer"
-description: "Implement ICanvasRenderer to connect Paper's vector drawing pipeline to any graphics API — OpenGL, DirectX, WebGL, Vulkan, Unity, or a game engine's own renderer."
+description: "Implement ICanvasRenderer to plug Paper into any graphics API — OpenGL, DirectX, Vulkan, WebGL, or a custom game engine render pipeline."
 ---
 
 Paper is intentionally decoupled from any specific graphics API. All rendering goes through `ICanvasRenderer`, a small interface that receives batched draw-call data from Prowl.Quill and submits it to whatever GPU backend you choose. This page explains the interface, shows how to wire it up, and points you to the three ready-to-run reference implementations in the repository.
@@ -300,7 +300,7 @@ public class SkeletonRenderer : ICanvasRenderer
 
     public void Initialize(int width, int height)
     {
-        // TODO: compile shader, create VAO/VBO, create default white 1×1 texture
+        // Compile shader, create VAO/VBO, and create a default white 1×1 texture.
         _whiteTexture = CreateTexture(1, 1);
         SetTextureData(_whiteTexture, new IntRect(0, 0, 1, 1),
                        new byte[] { 255, 255, 255, 255 });
@@ -309,26 +309,26 @@ public class SkeletonRenderer : ICanvasRenderer
 
     public void UpdateProjection(int width, int height)
     {
-        // TODO: rebuild orthographic projection matrix: (0,w)×(0,h)
+        // Rebuild the orthographic projection matrix: (0,w)×(0,h).
     }
 
     // ── ICanvasRenderer ────────────────────────────────────────────────────
 
     public object CreateTexture(uint width, uint height)
     {
-        // TODO: return a GPU texture handle
+        // Allocate a GPU texture and return an opaque handle.
         throw new NotImplementedException();
     }
 
     public Int2 GetTextureSize(object texture)
     {
-        // TODO: return (width, height) of the texture
+        // Return (width, height) of the texture.
         throw new NotImplementedException();
     }
 
     public void SetTextureData(object texture, IntRect bounds, byte[] data)
     {
-        // TODO: upload RGBA pixel data into the texture region
+        // Upload RGBA pixel data into the specified texture region.
         throw new NotImplementedException();
     }
 
@@ -349,7 +349,7 @@ public class SkeletonRenderer : ICanvasRenderer
 
     public void Dispose()
     {
-        // TODO: release GPU resources
+        // Release GPU resources (buffers, textures, shaders).
     }
 }
 ```

@@ -1,7 +1,7 @@
 ---
 title: "UnitValue Reference: Pixels, Percentage, Stretch, Auto"
 sidebarTitle: "UnitValue"
-description: "Complete reference for the UnitValue struct — Prowl.Paper's composite layout unit supporting pixels, percentages, stretch factors, and auto content sizing."
+description: "Complete reference for the UnitValue struct — Prowl.Paper's composite layout unit with pixels, percentages, stretch factors, and auto content sizing."
 ---
 
 `UnitValue` is the fundamental measurement type used throughout Prowl.Paper's layout engine. Rather than forcing a single unit mode, every `UnitValue` is a composite of four independent components — `Px`, `Pct`, `Grow`, and `AutoFactor` — evaluated together as `Px + (Pct/100 × parent) + Grow × remainderShare + AutoFactor × contentSize`. This design lets you express natural combinations such as "50% of the parent minus 8 pixels" (`Percentage(50, -8)`) or "fill remaining space with a 10px floor" (`Stretch(1) + Pixels(10)`) without needing separate union types.

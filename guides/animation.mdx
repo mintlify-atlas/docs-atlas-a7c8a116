@@ -1,7 +1,7 @@
 ---
-title: "Built-In Animation Primitives in Prowl.Paper"
+title: "Animation Primitives: AnimateBool, Spring, and More"
 sidebarTitle: "Animation"
-description: "Reference for Paper's ten animation primitives: AnimateBool, AnimateFloat, AnimateSpring, AnimateColor, AnimateVec2, AnimateAngle, OneShot, Pulse, StableFor, and Shake."
+description: "Learn Paper's ten animation helpers: AnimateBool, AnimateFloat, AnimateSpring, AnimateColor, AnimateVec2, AnimateAngle, OneShot, Pulse, StableFor, Shake."
 ---
 
 Prowl.Paper ships a suite of stateful animation helpers that live on the `Paper` instance. Each primitive stores its running state against the **current parent element**, keyed by call-site line number so that multiple independent animations on the same element never collide. Because Paper is immediate-mode, you call these every frame and simply use the returned value directly in a style property — no timelines, no keyframe objects, no separate animation controller.
@@ -287,5 +287,5 @@ Paper.Box("InputField")
 ```
 
 <Note>
-`Shake` is rising-edge — it only fires once per false→true transition. Keep `trigger` true across frames to hold the shake active; setting it false resets the amplitude to zero immediately.
+`Shake` is rising-edge — it only fires once per false→true transition. After the rising edge the amplitude decays naturally at the rate set by `decay`, regardless of whether `trigger` remains true or goes false. To re-trigger the shake, `trigger` must go false and then true again.
 </Note>

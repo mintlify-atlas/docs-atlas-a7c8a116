@@ -1,7 +1,7 @@
 ---
 title: "Easing Functions Reference for Prowl.Paper Animations"
 sidebarTitle: "Easing"
-description: "Full reference for the static Easing class — all 36 built-in easing functions for Prowl.Paper transitions and animations, with usage examples."
+description: "Full reference for the static Easing class — all 35 built-in easing functions for Prowl.Paper transitions and animations, with usage examples."
 ---
 
 The `Easing` static class provides a complete library of timing functions for use with Prowl.Paper's animation system. Every function accepts a normalized time value `t` in the range `[0, 1]` and returns a transformed output value — also nominally `[0, 1]`, though some functions (Back, Elastic, Spring) intentionally exceed this range to create overshoot and oscillation effects. Pass any of these functions as the easing argument to `.Transition()` or `AnimateBool()`, or compose your own using any `Func<float, float>`.
@@ -53,7 +53,7 @@ element.Transition(GuiProp.TranslateY, 0.25f, MyEase);
 
 No easing — output equals input. Useful as a neutral baseline or when constant-rate animation is intentional.
 
-```
+```text
 f(t) = t
 ```
 
@@ -71,7 +71,7 @@ Gentle acceleration or deceleration. A good default for most UI micro-interactio
 
 Accelerates from zero velocity. Starts slow, finishes fast.
 
-```
+```text
 f(t) = t²
 ```
 
@@ -79,7 +79,7 @@ f(t) = t²
 
 Decelerates to zero velocity. Starts fast, finishes slow. Ideal for elements sliding into view.
 
-```
+```text
 f(t) = 1 − (1 − t)²
 ```
 
@@ -87,7 +87,7 @@ f(t) = 1 − (1 − t)²
 
 Accelerates to the midpoint then decelerates symmetrically. Good for panel expansions.
 
-```
+```text
 f(t) = 2t²          for t < 0.5
 f(t) = 1 − (−2t+2)² / 2   for t ≥ 0.5
 ```
@@ -105,7 +105,7 @@ sidebar.Width(isOpen ? UnitValue.Pixels(240) : UnitValue.Pixels(0))
 More pronounced curves than quadratic. A popular choice for material-style animations.
 
 ### `Easing.CubicIn(float t)`
-```
+```text
 f(t) = t³
 ```
 
@@ -113,12 +113,12 @@ f(t) = t³
 
 Strong deceleration. Excellent for elements entering the screen.
 
-```
+```text
 f(t) = 1 − (1 − t)³
 ```
 
 ### `Easing.CubicInOut(float t)`
-```
+```text
 f(t) = 4t³             for t < 0.5
 f(t) = 1 − (−2t+2)³/2  for t ≥ 0.5
 ```
@@ -130,17 +130,17 @@ f(t) = 1 − (−2t+2)³/2  for t ≥ 0.5
 Dramatic curves with pronounced acceleration/deceleration phases.
 
 ### `Easing.QuartIn(float t)`
-```
+```text
 f(t) = t⁴
 ```
 
 ### `Easing.QuartOut(float t)`
-```
+```text
 f(t) = 1 − (1 − t)⁴
 ```
 
 ### `Easing.QuartInOut(float t)`
-```
+```text
 f(t) = 8t⁴             for t < 0.5
 f(t) = 1 − (−2t+2)⁴/2  for t ≥ 0.5
 ```
@@ -152,17 +152,17 @@ f(t) = 1 − (−2t+2)⁴/2  for t ≥ 0.5
 Extreme polynomial curves. Best for dramatic reveals where a sharp snap is desired.
 
 ### `Easing.QuintIn(float t)`
-```
+```text
 f(t) = t⁵
 ```
 
 ### `Easing.QuintOut(float t)`
-```
+```text
 f(t) = 1 − (1 − t)⁵
 ```
 
 ### `Easing.QuintInOut(float t)`
-```
+```text
 f(t) = 16t⁵             for t < 0.5
 f(t) = 1 − (−2t+2)⁵/2   for t ≥ 0.5
 ```
@@ -174,7 +174,7 @@ f(t) = 1 − (−2t+2)⁵/2   for t ≥ 0.5
 Smooth, natural-feeling curves based on a cosine/sine wave. Slightly softer than quadratic easing.
 
 ### `Easing.SineIn(float t)`
-```
+```text
 f(t) = 1 − cos(πt / 2)
 ```
 
@@ -182,7 +182,7 @@ f(t) = 1 − cos(πt / 2)
 
 A gentle finish. Commonly used for hover color fades.
 
-```
+```text
 f(t) = sin(πt / 2)
 ```
 
@@ -190,7 +190,7 @@ f(t) = sin(πt / 2)
 
 Gentle in and out. Recommended for color transitions and opacity fades.
 
-```
+```text
 f(t) = −(cos(πt) − 1) / 2
 ```
 
@@ -209,7 +209,7 @@ Very abrupt start or stop based on 2^t. Creates a sharp "snap" feel.
 
 Returns `0` when `t == 0`.
 
-```
+```text
 f(t) = 2^(10t − 10)
 ```
 
@@ -217,7 +217,7 @@ f(t) = 2^(10t − 10)
 
 Returns `1` when `t == 1`.
 
-```
+```text
 f(t) = 1 − 2^(−10t)
 ```
 
@@ -225,7 +225,7 @@ f(t) = 1 − 2^(−10t)
 
 Returns exact `0` at `t=0` and exact `1` at `t=1`.
 
-```
+```text
 f(t) = 2^(20t − 10) / 2       for t < 0.5
 f(t) = (2 − 2^(−20t + 10)) / 2  for t ≥ 0.5
 ```
@@ -237,17 +237,17 @@ f(t) = (2 − 2^(−20t + 10)) / 2  for t ≥ 0.5
 Curves derived from a quarter-circle arc. Produces a physically plausible motion feel.
 
 ### `Easing.CircIn(float t)`
-```
+```text
 f(t) = 1 − √(1 − t²)
 ```
 
 ### `Easing.CircOut(float t)`
-```
+```text
 f(t) = √(1 − (t − 1)²)
 ```
 
 ### `Easing.CircInOut(float t)`
-```
+```text
 f(t) = (1 − √(1 − (2t)²)) / 2       for t < 0.5
 f(t) = (√(1 − (−2t+2)²) + 1) / 2    for t ≥ 0.5
 ```
@@ -312,7 +312,7 @@ Four-bounce deceleration to the final value. The most commonly used bounce varia
 
 Bounces at the start before settling into forward motion.
 
-```
+```text
 f(t) = 1 − BounceOut(1 − t)
 ```
 
@@ -336,7 +336,7 @@ Beyond the named curve families above, `Easing` also provides:
 
 Instantly switches from `0` to `1` at the midpoint (`t = 0.5`). Useful for binary state flips that need to be driven by the transition timer.
 
-```
+```text
 f(t) = 0  for t < 0.5
 f(t) = 1  for t ≥ 0.5
 ```
@@ -345,7 +345,7 @@ f(t) = 1  for t ≥ 0.5
 
 Hermite interpolation (clamps `t` to `[0,1]` internally). Smoother than linear with minimal computation.
 
-```
+```text
 f(t) = t² × (3 − 2t)
 ```
 
@@ -353,7 +353,7 @@ f(t) = t² × (3 − 2t)
 
 Higher-degree Hermite polynomial with continuous first and second derivatives. Visually indistinguishable from `SmoothStep` for most UI animations but mathematically smoother.
 
-```
+```text
 f(t) = t³ × (t × (6t − 15) + 10)
 ```
 

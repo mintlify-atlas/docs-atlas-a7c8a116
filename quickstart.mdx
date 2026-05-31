@@ -19,7 +19,7 @@ dotnet add package Prowl.Paper
 That single package brings in the layout engine, the animation system, the text renderer, and all core APIs. The only transitive dependency is **Prowl.Quill**, which is pulled in automatically.
 
 <Note>
-  A renderer backend is **not** included in the NuGet package — you must supply one. See [Step 2](#pick-and-initialise-a-renderer) below, or read the full [Installation guide](./installation) for backend details.
+  A renderer backend is **not** included in the NuGet package — you must supply one. See [Step 2](#pick-and-initialise-a-renderer) below, or read the full [Installation guide](installation) for backend details.
 </Note>
 
 ### Pick and Initialise a Renderer
@@ -27,7 +27,7 @@ That single package brings in the layout engine, the animation system, the text 
 Paper draws everything through the `ICanvasRenderer` interface, so it is completely decoupled from any specific graphics API. You must pass a concrete renderer to the `Paper` constructor:
 
 ```csharp
-// Signature from Paper.Core.cs
+// Constructor signature (Paper.Core.cs)
 public Paper(ICanvasRenderer renderer, float width, float height, FontAtlasSettings fontAtlas)
 ```
 
@@ -50,8 +50,14 @@ P = new Paper(_renderer, width, height, new Prowl.Quill.FontAtlasSettings());
 And the equivalent for OpenTK:
 
 ```csharp
-// From Samples/OpenTK/Program.cs — inside PaperTKWindow
-// (renderer is instantiated in OnLoad, then passed to the Paper constructor)
+// From Samples/OpenTK/Program.cs
+var nativeWindowSettings = new NativeWindowSettings()
+{
+    ClientSize = new Vector2i(1080, 850),
+    Title = "Paper OpenTK Example",
+    Flags = OpenTK.Windowing.Common.ContextFlags.ForwardCompatible
+};
+
 using var app = new PaperTKWindow(GameWindowSettings.Default, nativeWindowSettings);
 app.Run();
 ```
@@ -62,12 +68,12 @@ app.Run();
 
 ### Load a Font
 
-Paper uses `FontAtlasSettings` for atlas configuration and `Canvas.AddFallbackFont` to register typefaces. Load a font file before your frame loop starts:
+Paper uses `FontAtlasSettings` for atlas configuration and `AddFallbackFont` to register typefaces. Load a font file before your frame loop starts:
 
 ```csharp
-// Load a TTF font file and register it as the fallback font
-var fontBytes = File.ReadAllBytes("path/to/font.ttf");
-var fontFile = FontFile.FromBytes(fontBytes);
+// Load a TTF font file from a stream and register it as the fallback font
+using var stream = File.OpenRead("path/to/font.ttf");
+var fontFile = new FontFile(stream);
 P.AddFallbackFont(fontFile);
 ```
 
@@ -80,35 +86,35 @@ Paper's API is structured around three calls per frame: `BeginFrame`, your UI de
 void RenderUI()
 {
     // Begin the UI frame
-    Paper.BeginFrame(deltaTime);
-    
+    P.BeginFrame(deltaTime);
+
     // Define your UI
-    using (Paper.Column("MainContainer")
+    using (P.Column("MainContainer")
         .BackgroundColor(240, 240, 240)
         .Enter())
     {
         // A header
-        using (Paper.Box("Header")
+        using (P.Box("Header")
             .Height(60)
             .BackgroundColor(50, 120, 200)
             .Text(Text.Center("My Application", myFont, Color.White))
             .Enter()) { }
-            
+
         // Content area
-        using (Paper.Row("Content").Enter())
+        using (P.Row("Content").Enter())
         {
             // Sidebar
-            Paper.Box("Sidebar")
+            P.Box("Sidebar")
                 .Width(200)
                 .BackgroundColor(220, 220, 220);
-                
+
             // Main content
-            Paper.Box("MainContent");
+            P.Box("MainContent");
         }
     }
-    
+
     // End the UI frame
-    Paper.EndFrame();
+    P.EndFrame();
 }
 ```
 
@@ -137,7 +143,7 @@ if (width != GetScreenWidth() || height != GetScreenHeight())
 Interactive elements use the same fluent API as static ones — just chain an event handler:
 
 ```csharp
-Paper.Box("MyButton")
+P.Box("MyButton")
     .Size(100)
     .BackgroundColor(Color.ForestGreen)
     .Rounded(8)
@@ -148,7 +154,7 @@ Paper.Box("MyButton")
 You can layer in hover and active states with animated transitions:
 
 ```csharp
-Paper.Box("AnimatedButton")
+P.Box("AnimatedButton")
     .Width(120).Height(40)
     .BackgroundColor(Color.ForestGreen)
     .Rounded(8)
@@ -158,7 +164,7 @@ Paper.Box("AnimatedButton")
     .Active
         .BackgroundColor(Color.DarkOliveGreen)
         .End()
-    .Transition(GuiProp.BackgroundColor, 0.2, Paper.Easing.SineInOut)
+    .Transition(GuiProp.BackgroundColor, 0.2, Easing.SineInOut)
     .Text(Text.Center("Click Me", myFont, Color.White))
     .OnClick((rect) => Console.WriteLine("Clicked!"));
 ```
@@ -201,10 +207,10 @@ The full key-mapping logic for each backend can be found in the respective sampl
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Installation" icon="box-open" href="./installation">
+  <Card title="Installation" icon="box-open" href="installation">
     Detailed setup for all three renderer backends, HiDPI configuration, font loading, and a version compatibility table.
   </Card>
-  <Card title="GitHub — Samples" icon="github" href="https://github.com/ProwlEngine/Prowl.Paper/tree/main/Samples">
-    Browse the complete OpenTK, Raylib, and WebAssembly sample projects to see a fully wired-up application.
+  <Card title="Immediate-Mode Concepts" icon="book" href="concepts/immediate-mode">
+    Learn the principles behind the immediate-mode paradigm and how Prowl.Paper applies them.
   </Card>
 </CardGroup>

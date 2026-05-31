@@ -1,7 +1,7 @@
 ---
 title: "ElementBuilder Event API: Click, Drag, Scroll, and Focus"
 sidebarTitle: "Events API"
-description: "Full reference for mouse, drag, scroll, hover, keyboard, and focus event handlers on ElementBuilder, including event bubbling and generic closure-free overloads."
+description: "Mouse click, drag, scroll, hover, keyboard, and focus event handlers for ElementBuilder, with behavior modifiers and allocation-free generic overloads."
 ---
 
 Prowl.Paper's event system connects raw input to your application logic through typed callbacks registered directly on the element being built. Every `On…` method adds a delegate to the element's event slot and returns `ElementBuilder` so the chain continues uninterrupted. Events fired by the input system automatically bubble up the element tree unless propagation is explicitly stopped.

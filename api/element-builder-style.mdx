@@ -1,7 +1,7 @@
 ---
 title: "ElementBuilder Style API: Colors, Effects, and Transforms"
 sidebarTitle: "Style API"
-description: "Reference for background, border, rounding, shadows, backdrop blur, 2D transforms, state-driven styles, transitions, images, and custom shaders on ElementBuilder."
+description: "Reference for background fills, borders, rounding, shadows, backdrop blur, 2D transforms, state-driven styles, transitions, and images on ElementBuilder."
 ---
 
 The style API controls the visual appearance of every element: fill colors, gradients, images, borders, rounded corners, drop shadows, backdrop blur, and 2D transforms. Most methods are defined on `StyleSetterBase<T>` and flow through to the element's internal style dictionary. All methods return `ElementBuilder` for chaining unless otherwise noted.
@@ -424,11 +424,11 @@ Paper.Element("loading-icon")
 ```csharp
 public ElementBuilder CustomShader(
     object shader,
-    Action<ShaderUniforms>? setupUniforms = null)
+    Action<Quill.ShaderUniforms>? setupUniforms = null)
 ```
 
 <ParamField path="shader" type="object" required>Backend-specific shader object.</ParamField>
-<ParamField path="setupUniforms" type="Action<ShaderUniforms>?" default="null">
+<ParamField path="setupUniforms" type="Action<Quill.ShaderUniforms>?" default="null">
   Optional callback invoked each frame to push per-frame uniform values before the element's rect is drawn.
 </ParamField>
 

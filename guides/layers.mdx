@@ -1,7 +1,7 @@
 ---
-title: "Rendering Layers for Popups, Modals, and Tooltips"
+title: "Rendering Layers: Popups, Modals, and Tooltips in Paper"
 sidebarTitle: "Layers"
-description: "Control draw order and input priority with Paper's integer layer system. Learn how Base, Overlay, and Topmost layers work, and how to build popups and modals."
+description: "Control draw order and hit-test priority with Paper's integer layer system. Covers Base, Overlay, and Topmost tiers and how to build modals and tooltips."
 ---
 
 Paper draws and hit-tests elements in layer order. By default everything lives on layer 0 and renders in tree order, but assigning a higher layer to any element causes it to be collected during the frame and drawn last — on top of all lower-layer content — with its input hit-test priority inverted accordingly. This is the foundation for modals, dropdown menus, and tooltips.
@@ -210,7 +210,7 @@ if (showModal)
                 paper.Box("Confirm")
                     .Width(paper.Stretch())
                     .Height(38)
-                    .BackgroundColor(Color.CrimsonRed)
+                    .BackgroundColor(Color.Crimson)
                     .Rounded(6)
                     .Text("Confirm", uiFont)
                     .Alignment(TextAlignment.MiddleCenter)
@@ -226,9 +226,11 @@ if (showModal)
 Dropdowns open at `Layer.Overlay` directly beneath their trigger button, positioned in screen space so they escape scroll containers.
 
 ```csharp
-bool isOpen = paper.GetElementStorage<bool>(dropdownId, "open");
+var triggerBuilder = paper.Box("DropdownTrigger");
+var dropdownHandle  = triggerBuilder._handle;   // capture before chaining
+bool isOpen = paper.GetElementStorage<bool>(dropdownHandle, "open");
 
-var trigger = paper.Box("DropdownTrigger")
+triggerBuilder
     .Width(160).Height(36)
     .BackgroundColor(isOpen ? Color.SlateGray : Color.DimGray)
     .Rounded(6)
@@ -236,8 +238,8 @@ var trigger = paper.Box("DropdownTrigger")
     .Alignment(TextAlignment.MiddleCenter)
     .OnClick(_ =>
     {
-        bool current = paper.GetElementStorage<bool>(dropdownId, "open");
-        paper.SetElementStorage(dropdownId, "open", !current);
+        bool current = paper.GetElementStorage<bool>(dropdownHandle, "open");
+        paper.SetElementStorage(dropdownHandle, "open", !current);
     });
 
 if (isOpen)
@@ -271,7 +273,7 @@ if (isOpen)
                 .OnClick(_ =>
                 {
                     selectedOption = option;
-                    paper.SetElementStorage(dropdownId, "open", false);
+                    paper.SetElementStorage(dropdownHandle, "open", false);
                 });
         }
     }

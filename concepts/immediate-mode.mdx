@@ -1,5 +1,5 @@
 ---
-title: "How Immediate-Mode UI Works in Paper"
+title: "How Immediate-Mode UI Works in Prowl.Paper (IMGUI)"
 sidebarTitle: "Immediate Mode"
 description: "Learn the IMGUI paradigm: why Paper rebuilds its element tree every frame, how element identity works, and how to persist state across frames."
 ---
@@ -86,16 +86,21 @@ If two elements in the same parent resolve to the same hash, Paper throws an exc
 IMGUI elements don't exist between frames, so any state that needs to survive — scroll position, open/closed flag, animation progress — must be stored explicitly. Paper provides per-element storage keyed by your element's stable ID:
 
 ```csharp
-using (paper.Column("ExpandablePanel").Enter())
+var panelBuilder = paper.Column("ExpandablePanel");
+var panelHandle = panelBuilder._handle;   // capture handle before Enter()
+
+using (panelBuilder.Enter())
 {
-    // Read persisted state (defaults to false on first frame)
+    // Read persisted state for this element (defaults to false on first frame).
+    // CurrentParent is "ExpandablePanel" here, so no handle needed.
     bool isOpen = paper.GetElementStorage<bool>("isOpen");
 
     paper.Box("Header")
         .Height(40)
         .BackgroundColor(Color.Gray)
         .Text(isOpen ? "▼ Collapse" : "► Expand", myFont)
-        .OnClick(_ => paper.SetElementStorage("isOpen", !isOpen));
+        // Pass the captured handle explicitly — CurrentParent is Root during event callbacks.
+        .OnClick(_ => paper.SetElementStorage(panelHandle, "isOpen", !isOpen));
 
     if (isOpen)
     {
@@ -106,7 +111,7 @@ using (paper.Column("ExpandablePanel").Enter())
 }
 ```
 
-`GetElementStorage<T>` and `SetElementStorage<T>` always operate against `CurrentParent` unless you pass an explicit `ElementHandle`. Storage entries whose element was not created in the last frame are automatically cleaned up by `EndFrame`.
+`GetElementStorage<T>` and `SetElementStorage<T>` have overloads that accept an explicit `ElementHandle`. During event callbacks such as `OnClick`, `CurrentParent` has already returned to the root element — always capture the handle before entering the scope and pass it explicitly inside callbacks. Storage entries whose element was not created in the last frame are automatically cleaned up by `EndFrame`.
 
 <Tip>
 Storage keys are plain strings — namespace them descriptively (e.g. `"scrollY"`, `"isOpen"`) to avoid accidental collisions between components that share the same element ID.

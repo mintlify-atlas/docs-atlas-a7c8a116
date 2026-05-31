@@ -1,5 +1,5 @@
 ---
-title: "Integrating Host Input with Prowl.Paper"
+title: "Integrating Host Input with Prowl.Paper: Mouse and Keys"
 sidebarTitle: "Input Integration"
 description: "Learn how to forward mouse, keyboard, scroll, and clipboard input from any host framework into Prowl.Paper's input system every frame."
 ---
@@ -131,9 +131,11 @@ bool   paper.IsPointerReleased(PaperMouseBtn btn)
 bool   paper.IsPointerHeld(PaperMouseBtn btn, float holdDuration = 0.5f)
 bool   paper.IsPointerDoubleClick(PaperMouseBtn btn)
 
-Float2 paper.PointerPos        // current screen-space position
-Float2 paper.PointerDelta      // movement since last frame
-float  paper.PointerWheel      // current frame's wheel delta
+Float2 paper.PointerPos             // current screen-space position
+Float2 paper.PreviousPointerPos     // position from the previous frame
+Float2 paper.PointerDelta           // movement since last frame (PointerPos - PreviousPointerPos)
+bool   paper.IsPointerMoving        // true when PointerDelta is non-zero
+float  paper.PointerWheel           // current frame's wheel delta
 
 bool   paper.IsPointerOverRect(float x, float y, float width, float height)
 Float2 paper.GetPointerClickPos(PaperMouseBtn btn) // position of last press

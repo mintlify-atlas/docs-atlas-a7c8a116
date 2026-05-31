@@ -1,5 +1,5 @@
 ---
-title: "Paper Input API: Keyboard, Mouse, and Clipboard"
+title: "Paper Input API: Keyboard, Mouse, Clipboard, and Events"
 sidebarTitle: "Input API"
 description: "Feed pointer and keyboard events from your host, query button and key states, manage clipboard, configure auto-repeat, and handle cursor visibility."
 ---
@@ -210,7 +210,7 @@ public bool IsPointerHeld(PaperMouseBtn btn, float holdDuration = 0.5f)
 public bool IsPointerDoubleClick(PaperMouseBtn btn)
 ```
 
-Returns `true` when `btn` is pressed within `0.25 s` of its previous release and the pointer hasn't moved more than 2 pixels from the release position.
+Returns `true` when `btn` is pressed within `0.25 s` of its previous release and the squared distance from the release position is less than `2` (approximately 1.4 logical pixels).
 
 <ResponseField name="return" type="bool">`true` on the double-click frame.</ResponseField>
 

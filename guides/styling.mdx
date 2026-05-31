@@ -129,15 +129,29 @@ Paper.Box("FrostPanel")
 Backdrop blur requires a renderer backend that supports the effect. On backends without support the property is silently ignored.
 </Warning>
 
-## Text color
+## Text styling
 
-`TextColor` sets the foreground color for any text rendered inside the element:
+`TextColor` sets the foreground color for any text rendered inside the element. The remaining text properties control typography:
 
 ```csharp
 Paper.Box("Label")
     .TextColor(Color.FromArgb(255, 226, 232, 240))
+    .FontSize(14f)
+    .LetterSpacing(0.5f)
+    .WordSpacing(2f)
+    .LineHeight(1.4f)
+    .TabSize(4)
     .Text("Hello, Paper!", myFont);
 ```
+
+| Method | Description |
+|---|---|
+| `TextColor(Color)` | Foreground color for text inside the element |
+| `FontSize(float)` | Font size in pixels (default `16`) |
+| `LetterSpacing(float)` | Extra space between characters in pixels (default `0`) |
+| `WordSpacing(float)` | Extra space between words in pixels (default `0`) |
+| `LineHeight(float)` | Line-height multiplier relative to font size (default `1.0`) |
+| `TabSize(int)` | Number of spaces a tab character expands to (default `4`) |
 
 ## Transforms
 
@@ -161,6 +175,7 @@ Paper.Box("Spinning")
 | `SkewX(float)` / `SkewY(float)` | Shear angles |
 | `Skew(float x, float y)` | Both axes at once |
 | `TransformOrigin(float x, float y)` | Pivot point (0–1 normalised) |
+| `Transform(Transform2D)` | Apply a raw 2D transform matrix directly |
 
 Transform properties can be transitioned just like visual ones — see [Transitions](/guides/transitions).
 
