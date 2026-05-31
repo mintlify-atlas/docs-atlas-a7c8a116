@@ -1,0 +1,291 @@
+---
+title: "Built-In Animation Primitives in Prowl.Paper"
+sidebarTitle: "Animation"
+description: "Reference for Paper's ten animation primitives: AnimateBool, AnimateFloat, AnimateSpring, AnimateColor, AnimateVec2, AnimateAngle, OneShot, Pulse, StableFor, and Shake."
+---
+
+Prowl.Paper ships a suite of stateful animation helpers that live on the `Paper` instance. Each primitive stores its running state against the **current parent element**, keyed by call-site line number so that multiple independent animations on the same element never collide. Because Paper is immediate-mode, you call these every frame and simply use the returned value directly in a style property — no timelines, no keyframe objects, no separate animation controller.
+
+## How per-call-site storage works
+
+Every animation method accepts an optional `id` string and an auto-captured `[CallerLineNumber]`. Paper uses these to build a unique storage key scoped to the current parent element. This means:
+
+- **Different lines → different slots**, even on the same element.
+- **Same line inside a loop** → all iterations share one slot. Pass an explicit `id` in that case.
+
+```csharp
+// Two independent animations on one element — different line numbers, different slots
+float hoverT   = gui.AnimateBool(isHovered, 0.15f, Easing.SineInOut);
+float pressedT = gui.AnimateBool(isActive,  0.08f);
+```
+
+```csharp
+// Inside a loop — supply an explicit id to keep slots distinct
+for (int i = 0; i < items.Length; i++)
+{
+    float t = gui.AnimateBool(items[i].Selected, 0.2f, id: $"sel_{i}");
+}
+```
+
+---
+
+## AnimateBool
+
+```csharp
+float AnimateBool(
+    bool target,
+    float duration = 0.2f,
+    Func<float, float>? easing = null,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Smoothly ramps a `0..1` progress value toward `1` when `target` is `true`, and back toward `0` when it is `false`. The underlying progress is stored linearly; `easing` is applied only when reading the return value, which means reversals always feel natural regardless of the easing curve shape.
+
+```csharp
+bool isHovered = Paper.IsElementHovered(handle.Data.ID);
+float t = gui.AnimateBool(isHovered, duration: 0.15f, easing: Easing.SineInOut);
+
+Paper.Box("Highlight")
+    .BackgroundColor(Color.Lerp(baseColor, hoverColor, t))
+    .Scale(1f + 0.05f * t);
+```
+
+<Tip>
+`AnimateBool` is the go-to for any on/off visual transition. It handles both the "enter" and "leave" directions in a single call.
+</Tip>
+
+---
+
+## AnimateFloat
+
+```csharp
+float AnimateFloat(
+    float target,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Chases a continuously changing `target` using **frame-rate-independent exponential smoothing** (`1 - exp(-speed * dt)`). Higher `speed` means faster catch-up — a speed of `8` reaches roughly 99 % of the target in about 0.5 seconds.
+
+Use `AnimateFloat` for values that change every frame, such as a scroll offset following the mouse or a live numeric readout.
+
+```csharp
+float smoothedWidth = gui.AnimateFloat(targetWidth, speed: 6f);
+
+Paper.Box("Bar")
+    .Width(smoothedWidth);
+```
+
+---
+
+## AnimateSpring
+
+```csharp
+float AnimateSpring(
+    float target,
+    float frequency = 6f,
+    float damping = 0.7f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+A spring-physics solver that stores both position and velocity. Unlike exponential smoothing, a spring can **overshoot** and oscillate before settling, giving movements a physical, satisfying feel.
+
+| Parameter | Effect |
+|---|---|
+| `frequency` | Oscillation rate in Hz — higher = stiffer, faster response |
+| `damping` | `0` = rings forever; `1` = critically damped (no overshoot); values in between give decaying oscillation |
+
+```csharp
+float springY = gui.AnimateSpring(
+    target: isExpanded ? 200f : 0f,
+    frequency: 8f,
+    damping: 0.5f);
+
+Paper.Box("Panel")
+    .Height(springY);
+```
+
+---
+
+## AnimateColor
+
+```csharp
+Color AnimateColor(
+    Color target,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+A per-channel exponential chase toward a `Color` target. All four channels (R, G, B, A) converge at the same `speed`.
+
+```csharp
+Color targetColor = isError ? Color.Red : primaryColor;
+Color smoothColor = gui.AnimateColor(targetColor, speed: 10f);
+
+Paper.Box("StatusIndicator")
+    .BackgroundColor(smoothColor);
+```
+
+---
+
+## AnimateVec2
+
+```csharp
+Float2 AnimateVec2(
+    Float2 target,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+The 2D vector variant of `AnimateFloat`. Both components chase their targets at the same speed, making it convenient for positions, sizes, and offsets.
+
+```csharp
+Float2 targetPos = new Float2(mouseX, mouseY);
+Float2 cursorPos = gui.AnimateVec2(targetPos, speed: 12f);
+
+Paper.Box("SoftCursor")
+    .PositionType(PositionType.SelfDirected)
+    .Left(cursorPos.X - 8)
+    .Top(cursorPos.Y - 8)
+    .Size(16)
+    .Rounded(8);
+```
+
+---
+
+## AnimateAngle
+
+```csharp
+float AnimateAngle(
+    float targetDegrees,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+An angle-aware exponential chase that always takes the **shortest path around the circle**. For example, animating from 350° to 10° travels through 360°, not the long way round through 180°.
+
+The returned running angle may drift outside `[0, 360)`; apply `% 360f` if you need a normalised output.
+
+```csharp
+float angle = gui.AnimateAngle(targetDegrees: isOpen ? 180f : 0f, speed: 8f);
+
+Paper.Box("ChevronIcon")
+    .Rotate(angle);
+```
+
+---
+
+## OneShot
+
+```csharp
+float OneShot(
+    bool trigger,
+    float duration = 0.4f,
+    Func<float, float>? easing = null,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Fires a single `0 → 1` ramp on the **rising edge** of `trigger` (false → true transition). The ramp plays for `duration` seconds and then holds at `1` until `trigger` goes false, at which point it resets to `0` (ready to fire again on the next rising edge).
+
+Use `OneShot` for fire-once effects: flash highlights when data updates, ink ripples on click, brief reveal animations.
+
+```csharp
+bool justSaved = /* set true on the frame the save completes */;
+float flash = gui.OneShot(justSaved, duration: 0.5f, easing: Easing.ExpoOut);
+
+Paper.Box("SaveIndicator")
+    .BackgroundColor(Color.FromArgb((int)(flash * 255), 50, 200, 100));
+```
+
+---
+
+## Pulse
+
+```csharp
+float Pulse(float period = 1.5f)
+```
+
+A **stateless** cosine oscillator that returns a smooth `0..1` value cycling with the given `period` in seconds. Because it reads `Paper.Time` directly, there is no stored state — every call at the same moment returns the same value.
+
+Use `Pulse` for idle breathing effects, blinking indicators, or anything that should oscillate continuously without a trigger.
+
+```csharp
+float breath = gui.Pulse(period: 2f);
+
+Paper.Box("StatusDot")
+    .BackgroundColor(Color.FromArgb(255, 69, 135, 235))
+    .Scale(0.9f + 0.1f * breath);
+```
+
+---
+
+## StableFor
+
+```csharp
+float StableFor(
+    bool current,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Returns the number of **seconds** the boolean `current` has held its current value without changing. Resets to `0` on the frame the value flips.
+
+This tiny primitive unlocks time-gated behaviours: hover-delayed tooltips, long-press detection, staggered list entrances.
+
+```csharp
+bool isHovered = Paper.IsElementHovered(handle.Data.ID);
+
+// Show tooltip only after hovering for 0.5 s
+float heldFor  = gui.StableFor(isHovered);
+float tipAlpha = gui.AnimateBool(isHovered && heldFor > 0.5f, duration: 0.12f);
+```
+
+```csharp
+// Long-press: fire action after 0.6 s of held active state
+bool isActive = Paper.IsElementActive(handle.Data.ID);
+if (isActive && gui.StableFor(isActive) > 0.6f)
+    TriggerLongPress();
+```
+
+---
+
+## Shake
+
+```csharp
+Float2 Shake(
+    bool trigger,
+    float intensity = 4f,
+    float decay = 6f,
+    float frequency = 30f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Fires a 2D screen-shake effect on the **rising edge** of `trigger`. The internal amplitude starts at `1` and decays exponentially at `decay` units per second. `frequency` controls how rapidly the offset oscillates. Returns a `Float2` pixel offset you add to a translation.
+
+| Parameter | Typical range | Effect |
+|---|---|---|
+| `intensity` | 2–20 px | Peak displacement |
+| `decay` | 4–12 | How quickly it fades (`6` ≈ 0.5 s tail) |
+| `frequency` | 15–40 | Chatter speed |
+
+```csharp
+bool justFailed = /* set true for one frame on validation error */;
+Float2 shakeOffset = gui.Shake(justFailed, intensity: 6f, decay: 8f, frequency: 28f);
+
+Paper.Box("InputField")
+    .TranslateX(shakeOffset.X)
+    .TranslateY(shakeOffset.Y)
+    .Style("text-field");
+```
+
+<Note>
+`Shake` is rising-edge — it only fires once per false→true transition. Keep `trigger` true across frames to hold the shake active; setting it false resets the amplitude to zero immediately.
+</Note>

@@ -1,0 +1,191 @@
+---
+title: "State-Driven Styles: Hover, Active, Focus, and Conditions"
+sidebarTitle: "State Styles"
+description: "Apply styles conditionally based on interaction state — hover, active, focus — or any boolean condition using Paper's fluent state-style API."
+---
+
+Prowl.Paper evaluates styles in the order you write them, and later calls always win. That one rule is the entire basis for state-driven styling: you write a base appearance first, then append overrides that only fire under specific conditions. The result is a single, readable chain that covers every visual state of an element.
+
+## State accessors
+
+Four built-in accessors open a conditional style block on an `ElementBuilder`:
+
+| Accessor | Condition |
+|---|---|
+| `.Hovered` | Pointer is inside the element's bounds |
+| `.Active` | Element is currently being pressed |
+| `.Focused` | Element holds keyboard focus |
+| `.Normal` | Always active — unconditional convenience wrapper |
+
+Each accessor returns a `StateDrivenStyle` instead of `ElementBuilder`. You call styling methods on `StateDrivenStyle` exactly as you would on `ElementBuilder`, and then **you must call `.End()`** to close the block and return to the `ElementBuilder` chain.
+
+```csharp
+Paper.Box("Button")
+    // Base appearance — always applied
+    .BackgroundColor(Color.FromArgb(50, 0, 0, 0))
+    .Rounded(8)
+    // Hover override
+    .Hovered
+        .BackgroundColor(Color.FromArgb(100, primaryColor))
+        .Rounded(12)
+        .End()
+    // Active override
+    .Active
+        .Scale(0.95f)
+        .BackgroundColor(Color.FromArgb(150, primaryColor))
+        .End()
+    .Enter();
+```
+
+<Warning>
+Every `.Hovered`, `.Active`, `.Focused`, `.Normal`, and `.If(...)` block **must** be closed with `.End()`. Forgetting `.End()` leaves you on the `StateDrivenStyle` type and the compiler will reject subsequent `ElementBuilder`-only calls.
+</Warning>
+
+## Custom conditions with `.If(bool)`
+
+`.If(condition)` lets you open a conditional block on any boolean expression — computed state, application flags, feature toggles, anything:
+
+```csharp
+bool isSelected = selectedIndex == myIndex;
+
+Paper.Box("Item")
+    .BackgroundColor(Color.Transparent)
+    .Hovered
+        .BackgroundColor(Color.FromArgb(20, primaryColor))
+        .End()
+    .If(isSelected)
+        .BackgroundColor(Color.FromArgb(30, primaryColor))
+        .BorderColor(primaryColor)
+        .BorderWidth(2)
+        .End()
+    .Enter();
+```
+
+## Style ordering and precedence
+
+Because styles are applied in call order, **whichever call comes last wins**. This is the mechanism for conditional overrides:
+
+```csharp
+Paper.Box("Element")
+    .BackgroundColor(Color.Gray)          // 1. Base: always gray
+    .Hovered
+        .BackgroundColor(Color.LightGray) // 2. Hover override
+        .End()
+    .If(isDisabled)
+        .BackgroundColor(Color.DarkGray)  // 3. Disabled override — wins even when hovered
+        .End();
+```
+
+In the example above, when `isDisabled` is `true` the disabled color takes precedence over the hover color, because `.If(isDisabled)` comes after `.Hovered` in the chain.
+
+<Note>
+`.Hovered`, `.Active`, and `.Focused` are implemented as `.If(Paper.IsElementHovered(...))` and friends — there is nothing special about them beyond convenience.
+</Note>
+
+## Named styles and `.Style()`
+
+Instead of writing inline properties, you can apply a registered `StyleTemplate` by name. Paper looks up the base template and automatically applies any matching pseudo-state variants (`name:hovered`, `name:focused`, `name:active`) based on the element's current state:
+
+```csharp
+// Applies "button" base, then "button:hovered" if hovered, etc.
+Paper.Box("SubmitBtn").Style("button");
+```
+
+Pass multiple names to layer styles in order:
+
+```csharp
+Paper.Box("PrimaryBtn").Style("button", "button-primary");
+```
+
+You can also apply a `StyleTemplate` instance directly:
+
+```csharp
+Paper.Box("Card").Style(myCardTemplate);
+```
+
+Inside a `StateDrivenStyle` block, `.Style()` works the same way but is only applied when the block's condition is active:
+
+```csharp
+Paper.Box("Card")
+    .Style("card")          // always: base card template
+    .Hovered
+        .Style("card-hover") // only when hovered
+        .End();
+```
+
+## Conditional named styles with `.StyleIf()`
+
+`.StyleIf(bool, params string[])` is a shorthand for wrapping `.Style()` in an `.If()` block:
+
+```csharp
+Paper.Box("Item")
+    .Style("menu-item")
+    .StyleIf(isSelected, "menu-item-selected");
+```
+
+This is equivalent to:
+
+```csharp
+Paper.Box("Item")
+    .Style("menu-item")
+    .If(isSelected)
+        .Style("menu-item-selected")
+        .End();
+```
+
+## Parent style inheritance with `.InheritStyle()`
+
+An element can inherit style properties from its parent (or any other element) using `InheritStyle`. When called without arguments the element inherits from its immediate layout parent:
+
+```csharp
+using (Paper.Box("Panel").BackgroundColor(Color.White).Enter())
+{
+    // Inherits BackgroundColor (and other inheritable props) from Panel
+    Paper.Box("Child").InheritStyle();
+}
+```
+
+Pass an `ElementHandle` to inherit from a specific element rather than the direct parent:
+
+```csharp
+Paper.Box("Child").InheritStyle(referenceElement);
+```
+
+<Info>
+`InheritStyle` sets up a style parent link; it does not copy values. The child reads its parent's computed value every frame, so the link stays live if the parent's style changes.
+</Info>
+
+## Full interactive example
+
+The following example shows a complete interactive button with base, hover, active, and disabled states, demonstrating style ordering in practice:
+
+```csharp
+bool isDisabled = false;
+
+Paper.Box("ActionButton")
+    // Base
+    .Width(160).Height(44)
+    .BackgroundColor(primaryColor)
+    .TextColor(Color.White)
+    .Rounded(8)
+    .Transition(GuiProp.BackgroundColor, 0.15f, Easing.SineOut)
+    .Transition(GuiProp.ScaleX, 0.1f)
+    .Transition(GuiProp.ScaleY, 0.1f)
+    // Hover — warmer tint
+    .Hovered
+        .BackgroundColor(Color.FromArgb(255, 100, 160, 245))
+        .End()
+    // Active — press-down scale
+    .Active
+        .Scale(0.93f)
+        .BackgroundColor(Color.FromArgb(255, 50, 110, 200))
+        .End()
+    // Disabled — overrides everything above when true
+    .If(isDisabled)
+        .BackgroundColor(Color.Gray)
+        .TextColor(Color.FromArgb(180, 255, 255, 255))
+        .End()
+    .OnClick(e => { if (!isDisabled) SubmitForm(); })
+    .Text("Submit", myFont)
+    .Enter();
+```

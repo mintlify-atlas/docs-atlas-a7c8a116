@@ -1,0 +1,327 @@
+---
+title: "Keyboard Navigation and Focus Management"
+sidebarTitle: "Keyboard Nav"
+description: "Configure Tab-order focus traversal, exclude elements from navigation, style focused elements, and coordinate keyboard capture with your host application."
+---
+
+Prowl.Paper includes a complete keyboard focus and navigation system that works out of the box with zero configuration for simple cases, and provides fine-grained control when you need it. Focus determines which element receives `OnKeyPressed` and `OnTextInput` events, and Tab-key traversal lets users move focus between interactive controls without touching the mouse. This page covers how to set up Tab order, control focusability, coordinate keyboard capture with your host loop, and style focused elements.
+
+## How focus works
+
+An element gains focus in two ways:
+
+1. **Click** — when a focusable element is clicked, it automatically receives focus.
+2. **Tab navigation** — when the Tab key is pressed (and no multi-line text area has focus), Paper advances focus to the next element in Tab order.
+
+Focus is tracked by a single integer ID (`FocusedElementId`). Only one element can be focused at a time. When a new element gains focus, the previously focused element receives an `OnFocusChange` event with `IsFocused = false` before the new element receives one with `IsFocused = true`.
+
+<Info>
+  By default every element created with `Paper.Box`, `Paper.Row`, or `Paper.Column` is focusable when clicked. To make an element non-interactive and non-focusable, call `IsNotInteractable()`. To keep it interactive (clickable, hoverable) but exclude it from focus, call `IsNotFocusable()`.
+</Info>
+
+---
+
+## Tab-order navigation
+
+### `TabIndex(int)`
+
+Assigns a tab-order position to an element. When the user presses Tab, Paper collects all visible, focusable elements that have a non-negative `TabIndex`, sorts them by that value ascending, and moves focus to the next one (wrapping from the last back to the first).
+
+```csharp
+Paper.Box("UsernameField")
+    .TabIndex(0)  // focused first
+    .TextField(username, font, onChange: v => username = v);
+
+Paper.Box("PasswordField")
+    .TabIndex(1)  // focused second
+    .TextField(password, font);
+
+Paper.Box("SubmitButton")
+    .TabIndex(2)  // focused third
+    .OnClick((ClickEvent e) => Submit());
+```
+
+<Steps>
+  <Step title="Assign TabIndex to each control">
+    Set `TabIndex` to a non-negative integer on every element you want reachable by Tab. Elements without a `TabIndex` (or with `TabIndex(-1)`) are skipped.
+  </Step>
+  <Step title="Press Tab to advance focus">
+    Paper sorts elements by their `TabIndex` value and focuses the next in sequence. When the last element is reached, focus wraps back to the first.
+  </Step>
+  <Step title="Shift+Tab is not yet built-in">
+    Reverse traversal is not currently automatic. You can implement it by checking `IsKeyDown(PaperKey.LeftShift)` before processing your own Tab logic, or by calling `paper.SetFocus(element)` programmatically.
+  </Step>
+</Steps>
+
+### Excluding elements from Tab order
+
+**`TabIndex(-1)`** is the default. Elements with `TabIndex(-1)` (or without any `TabIndex` call) are completely ignored during Tab traversal. They can still receive focus from a mouse click if they are focusable.
+
+```csharp
+// This label is visible and interactive, but Tab will skip it
+Paper.Box("SectionLabel")
+    .TabIndex(-1)
+    .Text("Personal information", font);
+```
+
+### `IsNotFocusable()`
+
+Permanently disables focus for an element. A non-focusable element cannot receive focus by any means — neither by clicking nor by Tab traversal — and will never receive `OnKeyPressed`, `OnTextInput`, or `OnFocusChange` events.
+
+```csharp
+Paper.Box("Separator")
+    .Height(1)
+    .BackgroundColor(Color.Gray)
+    .IsNotFocusable();  // purely visual divider
+```
+
+<Note>
+  `IsNotFocusable()` does not make an element non-interactive. The element can still receive mouse events (hover, click, drag). To suppress all interaction including hit-testing, use `IsNotInteractable()` instead.
+</Note>
+
+---
+
+## Programmatic focus control
+
+You can set or clear focus at any time from code using methods on the `Paper` instance.
+
+```csharp
+// Focus a specific element by handle
+paper.SetFocus(elementHandle);
+
+// Focus the current parent element (useful inside a using block)
+paper.SetFocus();
+
+// Remove focus from whichever element has it
+paper.ClearFocus();
+```
+
+Use `paper.FocusedElementId` to read the ID of the currently focused element, and `paper.IsElementFocused(id)` to check whether a specific element has focus.
+
+```csharp
+if (paper.IsElementFocused(_searchFieldId))
+    ShowSearchSuggestions();
+```
+
+---
+
+## `SkipKeyboardNavigation`
+
+`Paper.SkipKeyboardNavigation` is a frame-level flag that suppresses Tab navigation for the current frame. When `true`, pressing Tab does **not** advance focus — instead the Tab key is passed through to the focused element's `OnKeyPressed` callback.
+
+Paper sets this flag automatically when a multi-line `TextArea` is focused, so that pressing Tab inserts a tab character into the text rather than moving focus away. The flag resets to `false` at the end of every frame.
+
+```csharp
+// Paper does this internally when a TextArea is focused:
+if (paper.IsParentFocused && isMultiLine)
+    paper.SkipKeyboardNavigation = true;
+```
+
+You can also set it manually if you have a custom control that needs to consume Tab:
+
+```csharp
+Paper.Box("CodeEditor")
+    .TabIndex(1)
+    .OnKeyPressed((KeyEvent e) =>
+    {
+        if (e.Key == PaperKey.Tab)
+        {
+            paper.SkipKeyboardNavigation = true; // consume Tab this frame
+            InsertTabCharacter();
+        }
+    });
+```
+
+<Warning>
+  Because `SkipKeyboardNavigation` is checked at the beginning of the keyboard-event phase (before per-element handlers run), you must set it in the same frame before `paper.EndFrame()` is called. Setting it in a callback that runs during the frame works correctly.
+</Warning>
+
+---
+
+## `WantsCaptureKeyboard`
+
+After every frame, `paper.WantsCaptureKeyboard` reports whether any element captured the keyboard during that frame. It is `true` whenever a `TextField` or `TextArea` is focused (because those controls call `paper.CaptureKeyboard()` internally from their `OnPostLayout` render pass).
+
+Use this flag in your host loop to decide whether keyboard input should be forwarded to game logic:
+
+```csharp
+void ProcessFrame()
+{
+    UpdatePaperInput();
+
+    paper.BeginFrame(deltaTime, dpiScale);
+    RenderUI();
+    paper.EndFrame();
+
+    // Only process game hotkeys when no text field has focus
+    if (!paper.WantsCaptureKeyboard)
+        ProcessGameHotkeys();
+}
+```
+
+<Tip>
+  `WantsCaptureKeyboard` is updated at the **end** of each frame. Read it after `paper.EndFrame()` to get the value that reflects the current frame's focus state.
+</Tip>
+
+### `CaptureKeyboard()`
+
+`paper.CaptureKeyboard()` is the method that sets `WantsCaptureKeyboard = true` for the current frame. It is called internally by `TextField` and `TextArea` when they are rendering in a focused state. You can call it from your own custom controls if they need to signal the host that they own keyboard input:
+
+```csharp
+// Inside a custom control's OnPostLayout draw pass:
+paper.Draw(ref handle, (canvas, rect) =>
+{
+    if (paper.IsElementFocused(handle.Data.ID))
+    {
+        paper.CaptureKeyboard(); // signal host to suppress game shortcuts
+        DrawCustomCaret(canvas, rect);
+    }
+});
+```
+
+---
+
+## `SetCursorVisibility(bool)`
+
+`paper.SetCursorVisibility(bool visible)` fires the `OnCursorVisibilitySet` event, which your host application should subscribe to in order to show or hide the OS cursor. Paper itself does not manage the cursor directly.
+
+```csharp
+// Subscribe once at startup
+paper.OnCursorVisibilitySet += visible =>
+{
+    if (visible) ShowCursor();
+    else HideCursor();
+};
+
+// Then call from anywhere in your UI code:
+paper.SetCursorVisibility(false); // e.g., during a custom drag operation
+```
+
+---
+
+## Styling focused elements
+
+The `.Focused` state-driven style block applies style properties only when the element currently has keyboard focus. Use it to provide a visible focus ring or highlight, which is important for accessibility.
+
+```csharp
+Paper.Box("TextInput")
+    .TabIndex(0)
+    .Size(UnitValue.Stretch(), 36)
+    .BackgroundColor(Color.FromRgb(30, 30, 30))
+    .BorderColor(Color.FromRgb(80, 80, 80))
+    .BorderWidth(1)
+    .Rounded(4)
+    .Focused
+        .BorderColor(Color.CornflowerBlue)
+        .BorderWidth(2)
+        .End()
+    .TextField(value, font, onChange: v => value = v);
+```
+
+You can combine `.Focused` with transitions to animate the focus ring in and out:
+
+```csharp
+Paper.Box("AnimatedInput")
+    .TabIndex(1)
+    .BorderColor(Color.Transparent)
+    .BorderWidth(0)
+    .Focused
+        .BorderColor(Color.CornflowerBlue)
+        .BorderWidth(2)
+        .End()
+    .Transition(GuiProp.BorderColor, 0.15f)
+    .Transition(GuiProp.BorderWidth, 0.15f);
+```
+
+---
+
+## Focus-within: `IsParentFocusWithin`
+
+Paper mirrors the CSS `:focus-within` concept. `IsElementFocusWithin(id)` returns `true` if a given element **or any of its descendants** currently has focus. This is useful for highlighting a form group when any field inside it is active.
+
+```csharp
+bool formFocused = paper.IsParentFocusWithin; // true if any child has focus
+
+using (Paper.Box("FormGroup")
+    .If(formFocused)
+        .BackgroundColor(Color.FromRgb(20, 35, 55))
+        .End()
+    .Enter())
+{
+    Paper.Box("NameField").TabIndex(0).TextField(name, font, v => name = v);
+    Paper.Box("EmailField").TabIndex(1).TextField(email, font, v => email = v);
+}
+```
+
+---
+
+## Complete navigation example
+
+The following example wires up a small login form with Tab-navigable fields and a keyboard-accessible submit button.
+
+```csharp
+string username = "";
+string password = "";
+
+using (Paper.Column("LoginForm")
+    .Size(320, UnitValue.Auto())
+    .Padding(24)
+    .BackgroundColor(Color.FromRgb(25, 25, 35))
+    .Rounded(12)
+    .ChildLeft().ChildRight()   // center horizontally
+    .ChildTop().ChildBottom()   // center vertically
+    .Enter())
+{
+    // Username field
+    Paper.Box("UsernameField")
+        .TabIndex(0)
+        .Size(UnitValue.Stretch(), 36)
+        .BackgroundColor(Color.FromRgb(40, 40, 55))
+        .Rounded(6)
+        .Focused
+            .BorderColor(Color.CornflowerBlue)
+            .BorderWidth(2)
+            .End()
+        .Transition(GuiProp.BorderColor, 0.12f)
+        .TextField(username, font,
+            onChange: v => username = v,
+            placeholder: "Username");
+
+    // Password field
+    Paper.Box("PasswordField")
+        .TabIndex(1)
+        .Size(UnitValue.Stretch(), 36)
+        .BackgroundColor(Color.FromRgb(40, 40, 55))
+        .Rounded(6)
+        .Focused
+            .BorderColor(Color.CornflowerBlue)
+            .BorderWidth(2)
+            .End()
+        .Transition(GuiProp.BorderColor, 0.12f)
+        .TextField(password, font,
+            onChange: v => password = v,
+            placeholder: "Password");
+
+    // Submit button, reachable via Tab and activatable via Enter
+    Paper.Box("SubmitButton")
+        .TabIndex(2)
+        .Size(UnitValue.Stretch(), 40)
+        .BackgroundColor(Color.SteelBlue)
+        .Rounded(6)
+        .Focused
+            .BorderColor(Color.White)
+            .BorderWidth(2)
+            .End()
+        .Text("Sign in", font)
+        .OnClick((ClickEvent e) => SubmitLogin(username, password))
+        .OnKeyPressed((KeyEvent e) =>
+        {
+            if (e.Key == PaperKey.Enter)
+                SubmitLogin(username, password);
+        });
+}
+```
+
+<Tip>
+  Always provide a `.Focused` style on every interactive control. Users navigating by keyboard rely on the visible focus indicator to know where they are in the UI.
+</Tip>

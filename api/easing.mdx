@@ -1,0 +1,464 @@
+---
+title: "Easing Functions Reference for Prowl.Paper Animations"
+sidebarTitle: "Easing"
+description: "Full reference for the static Easing class — all 36 built-in easing functions for Prowl.Paper transitions and animations, with usage examples."
+---
+
+The `Easing` static class provides a complete library of timing functions for use with Prowl.Paper's animation system. Every function accepts a normalized time value `t` in the range `[0, 1]` and returns a transformed output value — also nominally `[0, 1]`, though some functions (Back, Elastic, Spring) intentionally exceed this range to create overshoot and oscillation effects. Pass any of these functions as the easing argument to `.Transition()` or `AnimateBool()`, or compose your own using any `Func<float, float>`.
+
+## Using easing functions
+
+<Steps>
+
+### Attach a transition with easing to any property
+
+```csharp
+element
+    .BackgroundColor(isHovered ? hoverColor : normalColor)
+    .Transition(GuiProp.BackgroundColor, 0.2f, Easing.SineInOut);
+```
+
+### Animate a boolean state with easing
+
+```csharp
+float t = paper.AnimateBool(isOpen, 0.3f, Easing.CubicOut);
+// t smoothly moves from 0→1 when isOpen becomes true, 1→0 when false
+element.ScaleY(UnitValue.Percentage(t * 100f));
+```
+
+### Provide a custom easing function
+
+Any `Func<float, float>` works in place of a named easing method:
+
+```csharp
+// Inline custom curve
+element.Transition(GuiProp.Rotate, 0.4f, t => t * t * (3f - 2f * t));
+
+// Named local function
+static float MyEase(float t) => MathF.Pow(t, 1.5f);
+element.Transition(GuiProp.TranslateY, 0.25f, MyEase);
+```
+
+</Steps>
+
+<Note>
+  All easing functions are pure `static float` methods. You can reference them as method groups: `Easing.CubicOut` is assignable to `Func<float, float>` directly without a lambda wrapper.
+</Note>
+
+---
+
+## Linear
+
+### `Easing.Linear(float t)`
+
+No easing — output equals input. Useful as a neutral baseline or when constant-rate animation is intentional.
+
+```
+f(t) = t
+```
+
+```csharp
+element.Transition(GuiProp.TranslateX, 0.5f, Easing.Linear);
+```
+
+---
+
+## Quadratic (power of 2)
+
+Gentle acceleration or deceleration. A good default for most UI micro-interactions.
+
+### `Easing.EaseIn(float t)`
+
+Accelerates from zero velocity. Starts slow, finishes fast.
+
+```
+f(t) = t²
+```
+
+### `Easing.EaseOut(float t)`
+
+Decelerates to zero velocity. Starts fast, finishes slow. Ideal for elements sliding into view.
+
+```
+f(t) = 1 − (1 − t)²
+```
+
+### `Easing.EaseInOut(float t)`
+
+Accelerates to the midpoint then decelerates symmetrically. Good for panel expansions.
+
+```
+f(t) = 2t²          for t < 0.5
+f(t) = 1 − (−2t+2)² / 2   for t ≥ 0.5
+```
+
+```csharp
+// Smooth open/close of a sidebar
+sidebar.Width(isOpen ? UnitValue.Pixels(240) : UnitValue.Pixels(0))
+       .Transition(GuiProp.Width, 0.25f, Easing.EaseInOut);
+```
+
+---
+
+## Cubic (power of 3)
+
+More pronounced curves than quadratic. A popular choice for material-style animations.
+
+### `Easing.CubicIn(float t)`
+```
+f(t) = t³
+```
+
+### `Easing.CubicOut(float t)`
+
+Strong deceleration. Excellent for elements entering the screen.
+
+```
+f(t) = 1 − (1 − t)³
+```
+
+### `Easing.CubicInOut(float t)`
+```
+f(t) = 4t³             for t < 0.5
+f(t) = 1 − (−2t+2)³/2  for t ≥ 0.5
+```
+
+---
+
+## Quartic (power of 4)
+
+Dramatic curves with pronounced acceleration/deceleration phases.
+
+### `Easing.QuartIn(float t)`
+```
+f(t) = t⁴
+```
+
+### `Easing.QuartOut(float t)`
+```
+f(t) = 1 − (1 − t)⁴
+```
+
+### `Easing.QuartInOut(float t)`
+```
+f(t) = 8t⁴             for t < 0.5
+f(t) = 1 − (−2t+2)⁴/2  for t ≥ 0.5
+```
+
+---
+
+## Quintic (power of 5)
+
+Extreme polynomial curves. Best for dramatic reveals where a sharp snap is desired.
+
+### `Easing.QuintIn(float t)`
+```
+f(t) = t⁵
+```
+
+### `Easing.QuintOut(float t)`
+```
+f(t) = 1 − (1 − t)⁵
+```
+
+### `Easing.QuintInOut(float t)`
+```
+f(t) = 16t⁵             for t < 0.5
+f(t) = 1 − (−2t+2)⁵/2   for t ≥ 0.5
+```
+
+---
+
+## Sinusoidal
+
+Smooth, natural-feeling curves based on a cosine/sine wave. Slightly softer than quadratic easing.
+
+### `Easing.SineIn(float t)`
+```
+f(t) = 1 − cos(πt / 2)
+```
+
+### `Easing.SineOut(float t)`
+
+A gentle finish. Commonly used for hover color fades.
+
+```
+f(t) = sin(πt / 2)
+```
+
+### `Easing.SineInOut(float t)`
+
+Gentle in and out. Recommended for color transitions and opacity fades.
+
+```
+f(t) = −(cos(πt) − 1) / 2
+```
+
+```csharp
+element.BackgroundColor(isHovered ? hoverColor : baseColor)
+       .Transition(GuiProp.BackgroundColor, 0.15f, Easing.SineInOut);
+```
+
+---
+
+## Exponential
+
+Very abrupt start or stop based on 2^t. Creates a sharp "snap" feel.
+
+### `Easing.ExpoIn(float t)`
+
+Returns `0` when `t == 0`.
+
+```
+f(t) = 2^(10t − 10)
+```
+
+### `Easing.ExpoOut(float t)`
+
+Returns `1` when `t == 1`.
+
+```
+f(t) = 1 − 2^(−10t)
+```
+
+### `Easing.ExpoInOut(float t)`
+
+Returns exact `0` at `t=0` and exact `1` at `t=1`.
+
+```
+f(t) = 2^(20t − 10) / 2       for t < 0.5
+f(t) = (2 − 2^(−20t + 10)) / 2  for t ≥ 0.5
+```
+
+---
+
+## Circular
+
+Curves derived from a quarter-circle arc. Produces a physically plausible motion feel.
+
+### `Easing.CircIn(float t)`
+```
+f(t) = 1 − √(1 − t²)
+```
+
+### `Easing.CircOut(float t)`
+```
+f(t) = √(1 − (t − 1)²)
+```
+
+### `Easing.CircInOut(float t)`
+```
+f(t) = (1 − √(1 − (2t)²)) / 2       for t < 0.5
+f(t) = (√(1 − (−2t+2)²) + 1) / 2    for t ≥ 0.5
+```
+
+---
+
+## Back
+
+Anticipation and follow-through — the element briefly moves in the opposite direction before or after its main motion. Values can exceed `[0, 1]`.
+
+### `Easing.BackIn(float t)`
+
+Slight backward dip before accelerating forward.
+
+### `Easing.BackOut(float t)`
+
+Overshoots the destination before settling. Great for "pop in" effects.
+
+```csharp
+// Pop-in tooltip appearance
+tooltip.ScaleX(UnitValue.Percentage(isVisible ? 100 : 0))
+       .Transition(GuiProp.ScaleX, 0.3f, Easing.BackOut);
+```
+
+### `Easing.BackInOut(float t)`
+
+Slight overshoot at both ends.
+
+<Warning>
+  Back, Elastic, and Spring easing functions can produce values outside `[0, 1]`. Avoid using them with `AnimateBool` if the target property has hard min/max constraints.
+</Warning>
+
+---
+
+## Elastic
+
+Spring-like oscillation — the value overshoots and bounces several times before settling. Values exceed `[0, 1]`.
+
+### `Easing.ElasticIn(float t)`
+
+Begins slowly with a spring-like startup wobble.
+
+### `Easing.ElasticOut(float t)`
+
+Overshoots then oscillates to the final value. Good for "bounce arrival" feedback.
+
+### `Easing.ElasticInOut(float t)`
+
+Oscillating at both the start and end of the transition.
+
+---
+
+## Bounce
+
+Simulates a physical ball bouncing — decelerates then rebounds in discrete jumps. Always stays within `[0, 1]`.
+
+### `Easing.BounceOut(float t)`
+
+Four-bounce deceleration to the final value. The most commonly used bounce variant.
+
+### `Easing.BounceIn(float t)`
+
+Bounces at the start before settling into forward motion.
+
+```
+f(t) = 1 − BounceOut(1 − t)
+```
+
+### `Easing.BounceInOut(float t)`
+
+Bouncing at both ends.
+
+```csharp
+// Bouncy height reveal
+panel.Height(UnitValue.Pixels(targetHeight))
+     .Transition(GuiProp.Height, 0.5f, Easing.BounceOut);
+```
+
+---
+
+## Additional utility functions
+
+Beyond the named curve families above, `Easing` also provides:
+
+### `Easing.Step(float t)`
+
+Instantly switches from `0` to `1` at the midpoint (`t = 0.5`). Useful for binary state flips that need to be driven by the transition timer.
+
+```
+f(t) = 0  for t < 0.5
+f(t) = 1  for t ≥ 0.5
+```
+
+### `Easing.SmoothStep(float t)`
+
+Hermite interpolation (clamps `t` to `[0,1]` internally). Smoother than linear with minimal computation.
+
+```
+f(t) = t² × (3 − 2t)
+```
+
+### `Easing.SmootherStep(float t)`
+
+Higher-degree Hermite polynomial with continuous first and second derivatives. Visually indistinguishable from `SmoothStep` for most UI animations but mathematically smoother.
+
+```
+f(t) = t³ × (t × (6t − 15) + 10)
+```
+
+### `Easing.Spring(float t, float dampingRatio = 0.5f, float angularFrequency = 20.0f)`
+
+Physics-based spring simulation. Values can exceed `[0, 1]` significantly during oscillation.
+
+<ParamField path="t" type="float">
+  Normalized time in `[0, 1]`.
+</ParamField>
+
+<ParamField path="dampingRatio" type="float" default="0.5f">
+  Controls oscillation damping. `0.1` produces heavy oscillation; `1.0` is critically damped with no overshoot.
+</ParamField>
+
+<ParamField path="angularFrequency" type="float" default="20.0f">
+  Controls the speed of oscillation. Higher values oscillate faster.
+</ParamField>
+
+```csharp
+// Highly springy scale pop
+float t = paper.AnimateBool(isSelected, 0.6f, v => Easing.Spring(v, 0.3f, 15f));
+element.ScaleX(UnitValue.Percentage(80 + t * 20));
+```
+
+<Note>
+  `Spring` must be wrapped in a lambda when used with `Transition` or `AnimateBool` because it has additional parameters beyond `float t`. Any `Func<float, float>` is accepted by both APIs.
+</Note>
+
+---
+
+## Choosing the right easing
+
+| Scenario | Recommended easing |
+|---|---|
+| Color / opacity fade | `SineInOut`, `EaseInOut` |
+| Element entering screen | `CubicOut`, `CircOut` |
+| Element leaving screen | `CubicIn`, `ExpoIn` |
+| Playful pop-in | `BackOut`, `ElasticOut` |
+| Countdown / progress | `Linear` |
+| Snappy button press | `ExpoOut` |
+| Realistic bounce | `BounceOut` |
+| Physics-feel widget | `Spring` |
+
+---
+
+## All signatures at a glance
+
+```csharp
+// Linear
+static float Linear(float t)
+
+// Quadratic
+static float EaseIn(float t)
+static float EaseOut(float t)
+static float EaseInOut(float t)
+
+// Cubic
+static float CubicIn(float t)
+static float CubicOut(float t)
+static float CubicInOut(float t)
+
+// Quartic
+static float QuartIn(float t)
+static float QuartOut(float t)
+static float QuartInOut(float t)
+
+// Quintic
+static float QuintIn(float t)
+static float QuintOut(float t)
+static float QuintInOut(float t)
+
+// Sinusoidal
+static float SineIn(float t)
+static float SineOut(float t)
+static float SineInOut(float t)
+
+// Exponential
+static float ExpoIn(float t)
+static float ExpoOut(float t)
+static float ExpoInOut(float t)
+
+// Circular
+static float CircIn(float t)
+static float CircOut(float t)
+static float CircInOut(float t)
+
+// Back (may exceed [0,1])
+static float BackIn(float t)
+static float BackOut(float t)
+static float BackInOut(float t)
+
+// Elastic (may exceed [0,1])
+static float ElasticIn(float t)
+static float ElasticOut(float t)
+static float ElasticInOut(float t)
+
+// Bounce
+static float BounceOut(float t)
+static float BounceIn(float t)
+static float BounceInOut(float t)
+
+// Utility
+static float Step(float t)
+static float SmoothStep(float t)
+static float SmootherStep(float t)
+static float Spring(float t, float dampingRatio = 0.5f, float angularFrequency = 20.0f)
+```

@@ -1,0 +1,367 @@
+---
+title: "Paper Class: Elements, Drawing, and Storage API"
+sidebarTitle: "Elements API"
+description: "Create boxes, rows, and columns; attach custom draw callbacks; manage the ID stack; read and write per-element persistent storage across frames."
+---
+
+Elements are the building blocks of every Paper UI. You create them by calling `Box`, `Row`, or `Column` on the `Paper` instance, configure them with the fluent `ElementBuilder` API, and enter their scope with `.Enter()`. Custom rendering, hierarchy manipulation, the ID stack, and per-element key-value storage are all covered here.
+
+---
+
+## Element Creation
+
+Every creation method returns an `ElementBuilder` so you can chain style and event setters. Elements are parented to `CurrentParent` automatically. Each element must have a unique combination of its string ID, integer ID, and source line number within its parent scope — Paper throws if a collision is detected.
+
+### Box
+
+```csharp
+public ElementBuilder Box(string stringID, int intID = 0, [CallerLineNumber] int lineID = 0)
+```
+
+Creates a generic layout container with no default layout direction (children are stacked).
+
+<ParamField path="stringID" type="string" required>
+  A descriptive string identifier. Combined with `intID` and `lineID` to produce a stable hash key across frames.
+</ParamField>
+
+<ParamField path="intID" type="int" default="0">
+  An integer discriminator. Increment this inside loops to give each iteration a unique ID without needing a unique string per element.
+</ParamField>
+
+<ParamField path="lineID" type="int">
+  Source line number, supplied automatically by the compiler via `[CallerLineNumber]`. Override only when calling from inside a wrapper method that hides the real call site.
+</ParamField>
+
+<ResponseField name="return" type="ElementBuilder">
+  A fluent builder for applying styles, events, and layout properties to the newly created element.
+</ResponseField>
+
+### Row
+
+```csharp
+public ElementBuilder Row(string stringID, int intID = 0, [CallerLineNumber] int lineID = 0)
+```
+
+Equivalent to `Box(...)` followed by `.LayoutType(LayoutType.Row)`. Children are arranged horizontally left-to-right.
+
+<ParamField path="stringID" type="string" required>String identifier.</ParamField>
+<ParamField path="intID" type="int" default="0">Integer discriminator for loops.</ParamField>
+<ParamField path="lineID" type="int">Auto-supplied source line.</ParamField>
+
+<ResponseField name="return" type="ElementBuilder">Builder with horizontal layout pre-configured.</ResponseField>
+
+### Column
+
+```csharp
+public ElementBuilder Column(string stringID, int intID = 0, [CallerLineNumber] int lineID = 0)
+```
+
+Equivalent to `Box(...)` followed by `.LayoutType(LayoutType.Column)`. Children are arranged vertically top-to-bottom.
+
+<ParamField path="stringID" type="string" required>String identifier.</ParamField>
+<ParamField path="intID" type="int" default="0">Integer discriminator for loops.</ParamField>
+<ParamField path="lineID" type="int">Auto-supplied source line.</ParamField>
+
+<ResponseField name="return" type="ElementBuilder">Builder with vertical layout pre-configured.</ResponseField>
+
+<CodeGroup>
+```csharp Static IDs
+using (paper.Column("sidebar").Width(paper.Pixels(240)).Enter())
+{
+    paper.Box("logo").Height(paper.Pixels(64));
+    paper.Box("nav").Height(paper.Stretch());
+}
+```
+
+```csharp Loop IDs
+using (paper.Row("toolbar").Enter())
+{
+    for (int i = 0; i < buttons.Length; i++)
+    {
+        // intID differentiates each iteration
+        paper.Box("btn", i).Width(paper.Pixels(32)).Height(paper.Pixels(32));
+    }
+}
+```
+</CodeGroup>
+
+---
+
+## Custom Drawing
+
+Paper lets you attach arbitrary canvas draw callbacks to any element. Background callbacks fire before children are rendered; foreground callbacks fire after children, making them suitable for overlays and decorations.
+
+### Draw (current element)
+
+```csharp
+public void Draw(Action<Canvas, Rect> renderAction)
+```
+
+Attaches `renderAction` to `CurrentParent`. The callback receives the canvas and the element's computed layout rectangle.
+
+<ParamField path="renderAction" type="Action&lt;Canvas, Rect&gt;" required>
+  A delegate invoked during the render phase. `Canvas` is Paper's underlying draw API; `Rect` is the element's bounding box in screen space.
+</ParamField>
+
+### Draw (explicit handle)
+
+```csharp
+public void Draw(ref ElementHandle handle, Action<Canvas, Rect> renderAction)
+```
+
+<ParamField path="handle" type="ElementHandle" required>The element to attach the draw callback to.</ParamField>
+<ParamField path="renderAction" type="Action&lt;Canvas, Rect&gt;" required>The draw callback.</ParamField>
+
+### DrawForeground (current element)
+
+```csharp
+public void DrawForeground(Action<Canvas, Rect> renderAction)
+```
+
+Like `Draw`, but the callback runs **after** all children have been rendered — useful for borders or tooltips that must appear on top of child content.
+
+<ParamField path="renderAction" type="Action&lt;Canvas, Rect&gt;" required>Foreground draw callback.</ParamField>
+
+### DrawForeground (explicit handle)
+
+```csharp
+public void DrawForeground(ref ElementHandle handle, Action<Canvas, Rect> renderAction)
+```
+
+<ParamField path="handle" type="ElementHandle" required>The element to attach the foreground callback to.</ParamField>
+<ParamField path="renderAction" type="Action&lt;Canvas, Rect&gt;" required>Foreground draw callback.</ParamField>
+
+```csharp
+// Custom circle drawn over a Box
+var el = paper.Box("circle-host");
+paper.Draw((canvas, rect) =>
+{
+    float cx = rect.Min.X + rect.Size.X / 2f;
+    float cy = rect.Min.Y + rect.Size.Y / 2f;
+    canvas.CircleFilled(cx, cy, rect.Size.X / 2f, Color.Cyan);
+});
+```
+
+<Note>
+  Paper does **not** automatically save and restore canvas state around your draw callbacks. If your callback changes stroke color, transform, or scissors, reset those before the callback returns.
+</Note>
+
+---
+
+## Element Lookup
+
+### FindElementByID
+
+```csharp
+public ElementHandle FindElementByID(int id)
+```
+
+Performs a linear scan of the element pool and returns the handle for the element whose `ID` matches. Returns a default (invalid) `ElementHandle` when not found.
+
+<ParamField path="id" type="int" required>The integer element ID to search for.</ParamField>
+
+<ResponseField name="return" type="ElementHandle">
+  A valid `ElementHandle` if found, or a default invalid handle otherwise. Check `handle.IsValid` before use.
+</ResponseField>
+
+---
+
+## Hierarchy Management
+
+### MoveToRoot
+
+```csharp
+public void MoveToRoot()
+```
+
+Reparents `CurrentParent` from its current parent to the root element. Call this inside an element's scope to make it render on top of everything — ideal for popups, modals, and tooltips. Combine with a high `Layer` value to guarantee draw order.
+
+<Warning>
+  `MoveToRoot` must be called while inside an element scope (i.e., after calling `.Enter()` on a builder and before the corresponding `Dispose`). Calling it outside any scope throws an exception.
+</Warning>
+
+### PushID (string)
+
+```csharp
+public void PushID(string id)
+```
+
+Hashes `id` and pushes the result onto the ID stack, creating an isolated scope so that element IDs created inside are disambiguated from identically-named elements in sibling scopes.
+
+<ParamField path="id" type="string" required>A string whose hash is mixed into subsequent element IDs.</ParamField>
+
+### PushID (int)
+
+```csharp
+public void PushID(int id)
+```
+
+<ParamField path="id" type="int" required>An integer mixed into subsequent element IDs.</ParamField>
+
+### PopID
+
+```csharp
+public void PopID()
+```
+
+Restores the previous ID scope. Every `PushID` must be paired with exactly one `PopID`. Attempting to pop the root ID throws an exception.
+
+```csharp
+// Render the same "item" template multiple times without ID collisions
+for (int i = 0; i < items.Count; i++)
+{
+    paper.PushID(items[i].UniqueKey);
+    RenderItem(paper, items[i]); // contains Box("icon"), Box("label"), etc.
+    paper.PopID();
+}
+```
+
+---
+
+## Element Storage
+
+Paper provides a lightweight per-element key-value store that persists across frames for as long as the element is recreated each frame. Storage is cleaned up automatically when an element is not recreated. This is the same backing store used internally by all animation primitives.
+
+### GetElementStorage&lt;T&gt; (current element)
+
+```csharp
+public T GetElementStorage<T>(string key, T defaultValue = default)
+```
+
+Reads a value from `CurrentParent`'s storage bucket.
+
+<ParamField path="key" type="string" required>Arbitrary string key.</ParamField>
+<ParamField path="defaultValue" type="T" default="default">Value returned when the key does not exist.</ParamField>
+
+<ResponseField name="return" type="T">The stored value, or `defaultValue`.</ResponseField>
+
+### GetElementStorage&lt;T&gt; (explicit element)
+
+```csharp
+public T GetElementStorage<T>(ElementHandle el, string key, T defaultValue = default)
+```
+
+<ParamField path="el" type="ElementHandle" required>The element whose storage to read from.</ParamField>
+<ParamField path="key" type="string" required>Key to look up.</ParamField>
+<ParamField path="defaultValue" type="T" default="default">Fallback value.</ParamField>
+
+<ResponseField name="return" type="T">The stored value, or `defaultValue`.</ResponseField>
+
+### SetElementStorage&lt;T&gt; (current element)
+
+```csharp
+public void SetElementStorage<T>(string key, T value)
+```
+
+<ParamField path="key" type="string" required>Key to write.</ParamField>
+<ParamField path="value" type="T" required>Value to store.</ParamField>
+
+### SetElementStorage&lt;T&gt; (explicit element)
+
+```csharp
+public void SetElementStorage<T>(ElementHandle el, string key, T value)
+```
+
+<ParamField path="el" type="ElementHandle" required>Target element.</ParamField>
+<ParamField path="key" type="string" required>Key to write.</ParamField>
+<ParamField path="value" type="T" required>Value to store.</ParamField>
+
+### HasElementStorage
+
+```csharp
+public bool HasElementStorage(ElementHandle el, string key)
+```
+
+<ParamField path="el" type="ElementHandle" required>Element to inspect.</ParamField>
+<ParamField path="key" type="string" required>Key to check.</ParamField>
+
+<ResponseField name="return" type="bool">`true` if the key exists in the element's storage bucket.</ResponseField>
+
+### GetRootStorage&lt;T&gt;
+
+```csharp
+public T GetRootStorage<T>(string key)
+```
+
+Reads from the **root element's** storage bucket, which persists for the lifetime of the `Paper` instance — not just the current element's lifetime.
+
+<ParamField path="key" type="string" required>Key to read.</ParamField>
+<ResponseField name="return" type="T">The stored value, or `default(T)` if absent.</ResponseField>
+
+### SetRootStorage&lt;T&gt;
+
+```csharp
+public void SetRootStorage<T>(string key, T value)
+```
+
+<ParamField path="key" type="string" required>Key to write.</ParamField>
+<ParamField path="value" type="T" required>Value to store.</ParamField>
+
+### ResetRichText
+
+```csharp
+public void ResetRichText(ElementHandle el)
+```
+
+Clears the cached rich-text layout on `el`, forcing a full re-layout and replaying any typewriter, shake, or other inline effects from the beginning next frame. A no-op if no rich-text cache exists yet.
+
+<ParamField path="el" type="ElementHandle" required>The element whose rich-text cache should be cleared.</ParamField>
+
+---
+
+## Layout Unit Helpers
+
+These helpers on `Paper` are thin wrappers around the static `UnitValue` factory methods, provided for ergonomic use in fluent chains without needing to import the layout engine namespace.
+
+### Stretch
+
+```csharp
+public UnitValue Stretch(float factor = 1f)
+```
+
+Creates a stretch unit — the element competes with sibling stretch elements for remaining space, weighted by `factor`.
+
+<ParamField path="factor" type="float" default="1.0">Relative weight among stretch siblings.</ParamField>
+<ResponseField name="return" type="UnitValue">A stretch-typed `UnitValue`.</ResponseField>
+
+### Pixels
+
+```csharp
+public UnitValue Pixels(float value)
+```
+
+Creates an absolute pixel unit.
+
+<ParamField path="value" type="float" required>Size in logical pixels.</ParamField>
+<ResponseField name="return" type="UnitValue">A pixel-typed `UnitValue`.</ResponseField>
+
+### Percent
+
+```csharp
+public UnitValue Percent(float value, float pixelOffset = 0f)
+```
+
+Creates a percentage unit relative to the parent element's dimension on the same axis, with an optional additive pixel offset.
+
+<ParamField path="value" type="float" required>Percentage in the range `0..1` (e.g., `0.5` = 50%).</ParamField>
+<ParamField path="pixelOffset" type="float" default="0.0">Pixel offset added after the percentage is resolved.</ParamField>
+<ResponseField name="return" type="UnitValue">A percentage-typed `UnitValue`.</ResponseField>
+
+### Auto
+
+```csharp
+public UnitValue Auto { get; }
+```
+
+Returns `UnitValue.Auto`, signalling that the layout engine should determine this dimension automatically (e.g., from parent defaults or sibling spacing rules).
+
+<ResponseField name="return" type="UnitValue">An auto-typed `UnitValue`.</ResponseField>
+
+```csharp
+// Mix unit types freely in a single layout
+paper.Box("card")
+    .Width(paper.Percent(0.5f, -8f))   // 50% of parent minus 8px
+    .Height(paper.Pixels(120))
+    .Left(paper.Stretch())             // push remaining space left
+    .Enter();
+```

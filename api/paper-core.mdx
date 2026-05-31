@@ -1,0 +1,274 @@
+---
+title: "Paper Class: Initialization, Frame Loop, and Core API"
+sidebarTitle: "Paper Core"
+description: "Constructor, BeginFrame/EndFrame lifecycle, viewport resolution, font utilities, DPI scaling, and core properties of the Paper class."
+---
+
+The `Paper` class is the root object for every Prowl.Paper UI session. You create one instance per viewport, feed it a renderer and dimensions, then call `BeginFrame` and `EndFrame` around your immediate-mode draw code each tick. Everything else — elements, animations, input, styles — hangs off this single object.
+
+## Constructor
+
+```csharp
+public Paper(ICanvasRenderer renderer, float width, float height, FontAtlasSettings fontAtlas)
+```
+
+Initializes a Paper instance and allocates all internal subsystems: the element pool, canvas, input tables, and root element.
+
+<ParamField path="renderer" type="ICanvasRenderer" required>
+  The backend canvas renderer that Paper will issue draw calls to. Implement `ICanvasRenderer` in your host project to bridge Paper to any graphics API.
+</ParamField>
+
+<ParamField path="width" type="float" required>
+  Initial viewport width in logical (CSS-style) pixels.
+</ParamField>
+
+<ParamField path="height" type="float" required>
+  Initial viewport height in logical pixels.
+</ParamField>
+
+<ParamField path="fontAtlas" type="FontAtlasSettings" required>
+  Settings used by the internal `Canvas` to rasterize font glyphs. Includes atlas size and default font.
+</ParamField>
+
+---
+
+## Frame Loop
+
+Every frame you must bracket your UI code with `BeginFrame` and `EndFrame`. Input feed calls go **before** `BeginFrame`; element and style calls go **between** the two.
+
+<Steps>
+  <Step title="Feed input">
+    Call `SetPointerPosition`, `SetKeyState`, etc. to push host events into Paper.
+  </Step>
+  <Step title="BeginFrame">
+    Resets the element hierarchy, advances timing, and opens a new canvas frame.
+  </Step>
+  <Step title="Build UI">
+    Call `Box`, `Row`, `Column`, animation helpers, style setters, and anything else that describes your layout.
+  </Step>
+  <Step title="EndFrame">
+    Runs layout, handles interaction, renders all elements, and flushes the canvas to the renderer.
+  </Step>
+</Steps>
+
+### BeginFrame
+
+```csharp
+public void BeginFrame(float deltaTime, float dpiScale = 1.0f)
+```
+
+<ParamField path="deltaTime" type="float" required>
+  Elapsed seconds since the previous frame. Used to advance `Time`, `DeltaTime`, and all animation state.
+</ParamField>
+
+<ParamField path="dpiScale" type="float" default="1.0">
+  When greater than `0`, sets `DisplayFramebufferScale` to `(dpiScale, dpiScale)` for this frame. Pass `0` or a negative value to leave `DisplayFramebufferScale` untouched (useful if you set it manually before the call).
+</ParamField>
+
+### EndFrame
+
+```csharp
+public void EndFrame()
+```
+
+No parameters. Executes in order:
+
+1. Updates all element style transitions.
+2. Fires `OnEndOfFramePreLayout`, then runs the layout pass.
+3. Fires `OnEndOfFramePostLayout`.
+4. Calls post-layout callbacks recursively.
+5. Performs hit-testing and interaction handling.
+6. Renders the element tree (respecting layer ordering).
+7. Calls `Canvas.Render()` and closes the input frame.
+8. Cleans up stale element storage and style entries.
+9. Records `MillisecondsSpent`.
+
+---
+
+## Core Properties
+
+<ResponseField name="Width" type="float">
+  Viewport width in logical units, derived from the canvas or the last value passed to `SetResolution`.
+</ResponseField>
+
+<ResponseField name="Height" type="float">
+  Viewport height in logical units.
+</ResponseField>
+
+<ResponseField name="ScreenRect" type="Rect">
+  Convenience rectangle `Rect(0, 0, Width, Height)` covering the full viewport.
+</ResponseField>
+
+<ResponseField name="DisplayFramebufferScale" type="Float2">
+  Physical-pixels-per-logical-pixel ratio for the main viewport. Default is `(1, 1)`. Set to `(2, 2)` on Retina/HiDPI displays so Paper rasterizes fonts and scales vertex output at the correct density. Must be set before `BeginFrame`.
+</ResponseField>
+
+<ResponseField name="DpiScale" type="float">
+  Shorthand for `DisplayFramebufferScale.X`.
+</ResponseField>
+
+<ResponseField name="MainScale" type="float">
+  Accumulated multiplier applied by all previous calls to `ScaleAllSizes`. Starts at `1.0`.
+</ResponseField>
+
+<ResponseField name="RootElement" type="ElementHandle">
+  Handle to the invisible root element that owns the entire element hierarchy. Recreated each `BeginFrame`.
+</ResponseField>
+
+<ResponseField name="Canvas" type="Canvas">
+  The underlying `Prowl.Quill.Canvas` used for all draw calls. Available for advanced direct rendering within `Draw` callbacks.
+</ResponseField>
+
+<ResponseField name="Renderer" type="ICanvasRenderer">
+  The renderer supplied to the constructor.
+</ResponseField>
+
+<ResponseField name="MillisecondsSpent" type="float">
+  Wall-clock milliseconds consumed by the last `EndFrame` call. Useful for performance profiling.
+</ResponseField>
+
+<ResponseField name="CountOfAllElements" type="uint">
+  Number of distinct elements created during the last frame (after duplicates are detected and before any are removed).
+</ResponseField>
+
+<ResponseField name="CurrentParent" type="ElementHandle">
+  The element at the top of the internal element stack — i.e., the element whose scope is currently open. All new elements created via `Box`, `Row`, `Column`, etc. are added as children of `CurrentParent`.
+</ResponseField>
+
+---
+
+## Resolution
+
+### SetResolution
+
+```csharp
+public void SetResolution(float width, float height)
+```
+
+Updates the stored logical viewport size. The change takes effect at the next `BeginFrame`, which passes the new dimensions to the canvas and uses them when constructing the root element.
+
+<ParamField path="width" type="float" required>New logical viewport width.</ParamField>
+<ParamField path="height" type="float" required>New logical viewport height.</ParamField>
+
+### ScaleAllSizes
+
+```csharp
+public void ScaleAllSizes(float scaleFactor)
+```
+
+Multiplies every registered default dimensional value (padding, border width, spacing, font sizes, etc.) by `scaleFactor`. Call **once** at startup — typically with the monitor DPI ratio — to adapt default style values to HiDPI displays.
+
+<ParamField path="scaleFactor" type="float" required>
+  Must be greater than `0`. Values less than `1` shrink defaults; values greater than `1` grow them.
+</ParamField>
+
+<Warning>
+  Calling `ScaleAllSizes` multiple times compounds the effect because `MainScale` is accumulated. If you need to reset, create a new `Paper` instance.
+</Warning>
+
+---
+
+## Font Utilities
+
+### AddFallbackFont
+
+```csharp
+public void AddFallbackFont(FontFile font)
+```
+
+Registers a fallback `FontFile` with the canvas. When a glyph is missing from the primary font, Paper tries each fallback in registration order.
+
+<ParamField path="font" type="FontFile" required>A loaded font file to use as a fallback.</ParamField>
+
+### EnumerateSystemFonts
+
+```csharp
+public IEnumerable<FontFile> EnumerateSystemFonts()
+```
+
+<ResponseField name="return" type="IEnumerable&lt;FontFile&gt;">
+  Lazy enumeration of all font files discovered on the host system by the underlying canvas.
+</ResponseField>
+
+### MeasureText (overload 1)
+
+```csharp
+public Float2 MeasureText(string text, float pixelSize, FontFile font, float letterSpacing = 0.0f)
+```
+
+Measures the rendered bounding box of `text` without creating a full `TextLayout`.
+
+<ParamField path="text" type="string" required>The string to measure.</ParamField>
+<ParamField path="pixelSize" type="float" required>Font size in pixels.</ParamField>
+<ParamField path="font" type="FontFile" required>The font to use for measurement.</ParamField>
+<ParamField path="letterSpacing" type="float" default="0.0">Extra spacing between characters in pixels.</ParamField>
+
+<ResponseField name="return" type="Float2">Width and height of the measured text in logical pixels.</ResponseField>
+
+### MeasureText (overload 2)
+
+```csharp
+public Float2 MeasureText(string text, TextLayoutSettings settings)
+```
+
+<ParamField path="text" type="string" required>The string to measure.</ParamField>
+<ParamField path="settings" type="TextLayoutSettings" required>Full layout settings including font, size, wrapping, and alignment.</ParamField>
+
+<ResponseField name="return" type="Float2">Width and height of the measured text.</ResponseField>
+
+### CreateLayout
+
+```csharp
+public TextLayout CreateLayout(string text, TextLayoutSettings settings)
+```
+
+Produces a fully shaped `TextLayout` object suitable for repeated rendering without re-shaping on every frame.
+
+<ParamField path="text" type="string" required>The string to lay out.</ParamField>
+<ParamField path="settings" type="TextLayoutSettings" required>Layout settings.</ParamField>
+
+<ResponseField name="return" type="TextLayout">A pre-shaped text layout that can be passed to canvas draw calls.</ResponseField>
+
+---
+
+## Frame Events
+
+Two `Action` delegates fire at specific points inside `EndFrame`, giving you hooks to inject logic at layout boundaries without subclassing `Paper`.
+
+<ResponseField name="OnEndOfFramePreLayout" type="Action?">
+  Invoked after style updates but **before** the layout pass runs. Use this to modify element properties or add elements that depend on computed style but not yet computed positions.
+</ResponseField>
+
+<ResponseField name="OnEndOfFramePostLayout" type="Action?">
+  Invoked immediately after the layout pass completes, before rendering. Computed `X`, `Y`, `LayoutWidth`, and `LayoutHeight` values on all elements are stable here.
+</ResponseField>
+
+---
+
+## Example: Minimal Frame Loop
+
+```csharp
+var paper = new Paper(myRenderer, 1280, 720, FontAtlasSettings.Default);
+
+// Game/application loop
+while (running)
+{
+    // Feed host input first
+    paper.SetPointerPosition(mouseX, mouseY);
+    paper.SetPointerState(PaperMouseBtn.Left, mouseX, mouseY, leftDown, false);
+
+    paper.BeginFrame(deltaTime);
+
+    // Build UI
+    using (paper.Box("root").Width(paper.Stretch()).Height(paper.Stretch()).Enter())
+    {
+        // ... child elements ...
+    }
+
+    paper.EndFrame();
+}
+```
+
+<Tip>
+  Set `DisplayFramebufferScale` before the first `BeginFrame` on HiDPI displays, or pass the scale as the `dpiScale` argument each frame if it can change at runtime (e.g., window dragged between monitors).
+</Tip>

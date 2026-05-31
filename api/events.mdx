@@ -1,0 +1,504 @@
+---
+title: "Event Types Reference: Click, Drag, Key, Focus, and Scroll"
+sidebarTitle: "Event Types"
+description: "Complete reference for all Prowl.Paper event types — ClickEvent, DragEvent, ElementEvent, FocusEvent, KeyEvent, ScrollEvent, TextInputEvent, and the PaperKey enum."
+---
+
+Prowl.Paper dispatches strongly typed event objects to element callbacks. Every callback receives a concrete event class whose fields describe what happened — mouse position, key pressed, drag delta, and so on. All pointer-based events derive from `ElementEvent`, which provides common spatial data. This page documents every event type, the callback that delivers it, and every public field on each class.
+
+## Inheritance overview
+
+```
+ElementEvent                    ← base class for all pointer events
+  ├── ClickEvent                ← OnClick, OnPress, OnHeld, OnRelease, OnDoubleClick, OnRightClick
+  ├── DragEvent                 ← OnDragStart, OnDragging, OnDragEnd
+  └── ScrollEvent               ← OnScroll
+
+FocusEvent                      ← OnFocusChange  (standalone, not pointer-based)
+KeyEvent                        ← OnKeyPressed   (standalone)
+TextInputEvent                  ← OnTextInput    (standalone)
+```
+
+---
+
+## `ElementEvent` — base class
+
+`ElementEvent` is the base for all pointer-driven events. It provides position data in three coordinate spaces and a propagation-control mechanism.
+
+**Namespace:** `Prowl.PaperUI.Events`
+
+### Properties
+
+<ParamField path="Source" type="ElementHandle">
+  The element that originally triggered the event. When an event bubbles to a parent, `Source` is retargeted to the new element via the internal `Retarget()` method, so it always reflects the **current** element handling the event.
+</ParamField>
+
+<ParamField path="ElementRect" type="Rect">
+  The calculated layout rectangle of the source element in screen coordinates.
+</ParamField>
+
+<ParamField path="PointerPosition" type="Float2">
+  The raw pointer (mouse cursor) position in screen coordinates at the moment the event fired.
+</ParamField>
+
+<ParamField path="RelativePosition" type="Float2">
+  The pointer position relative to the element's top-left corner. `(0, 0)` is the top-left corner of the element.
+</ParamField>
+
+<ParamField path="NormalizedPosition" type="Float2">
+  The pointer position mapped to a `[0, 1]` range within the element. `(0, 0)` is the top-left corner; `(1, 1)` is the bottom-right corner.
+</ParamField>
+
+<ParamField path="IsPropagationStopped" type="bool">
+  Indicates whether event bubbling has been halted for this event. Read-only; set it via `StopPropagation()`.
+</ParamField>
+
+### Method
+
+```csharp
+public void StopPropagation()
+```
+
+Prevents the event from bubbling further up the element tree. Only affects the current event instance — other event types on the same element are unaffected. Equivalent to DOM's `Event.stopPropagation()`.
+
+```csharp
+element.OnClick(e =>
+{
+    HandleClick(e);
+    e.StopPropagation(); // parent elements will not see this click
+});
+```
+
+---
+
+## `ClickEvent`
+
+Fired for all mouse-button click interactions. The specific interaction is identified by the `Phase` property.
+
+**Namespace:** `Prowl.PaperUI.Events`  
+**Base:** `ElementEvent`
+
+### Callbacks that receive `ClickEvent`
+
+| Callback | Phase value |
+|---|---|
+| `OnClick` | `ClickPhase.Click` |
+| `OnPress` | `ClickPhase.Press` |
+| `OnRelease` | `ClickPhase.Release` |
+| `OnHeld` | `ClickPhase.Held` |
+| `OnDoubleClick` | `ClickPhase.DoubleClick` |
+| `OnRightClick` | `ClickPhase.RightClick` |
+
+### Properties
+
+<ParamField path="Button" type="PaperMouseBtn">
+  The mouse button that triggered this event. See `PaperMouseBtn` below.
+</ParamField>
+
+<ParamField path="Phase" type="ClickPhase">
+  Identifies the click phase:
+  - `ClickPhase.Click` — standard single click (press + release)
+  - `ClickPhase.Press` — button just pressed down
+  - `ClickPhase.Release` — button just released
+  - `ClickPhase.Held` — button held beyond the hold threshold
+  - `ClickPhase.DoubleClick` — two clicks within the double-click time window
+  - `ClickPhase.RightClick` — right mouse button click
+</ParamField>
+
+All `ElementEvent` properties (`PointerPosition`, `RelativePosition`, `NormalizedPosition`, `ElementRect`, `Source`) are also available.
+
+### Example
+
+```csharp
+button
+    .OnClick(e =>
+    {
+        Console.WriteLine($"Clicked at {e.RelativePosition} with {e.Button}");
+    })
+    .OnPress(e =>
+    {
+        // Finger is down — start visual press state
+        isPressed = true;
+    })
+    .OnRelease(e =>
+    {
+        isPressed = false;
+    })
+    .OnDoubleClick(e =>
+    {
+        OpenDetail();
+        e.StopPropagation();
+    });
+```
+
+---
+
+## `DragEvent`
+
+Fired during mouse drag operations. Provides both per-frame delta movement and the total displacement from the drag origin.
+
+**Namespace:** `Prowl.PaperUI.Events`  
+**Base:** `ElementEvent`
+
+### Callbacks that receive `DragEvent`
+
+| Callback | Phase value |
+|---|---|
+| `OnDragStart` | `DragPhase.Start` |
+| `OnDragging` | `DragPhase.Dragging` |
+| `OnDragEnd` | `DragPhase.End` |
+
+### Properties
+
+<ParamField path="StartPosition" type="Float2">
+  The screen-space pointer position where the drag began. Constant for the entire drag gesture.
+</ParamField>
+
+<ParamField path="Delta" type="Float2">
+  The pointer movement since the **previous frame**. Use this for incremental updates such as moving a window or scrubbing a value.
+</ParamField>
+
+<ParamField path="TotalDelta" type="Float2">
+  The total pointer displacement from `StartPosition` to the current frame. Use this when you need the cumulative offset rather than the per-frame change.
+</ParamField>
+
+<ParamField path="Phase" type="DragPhase">
+  Identifies the drag phase:
+  - `DragPhase.Start` — drag gesture began this frame
+  - `DragPhase.Dragging` — drag is ongoing (fires every frame while dragging)
+  - `DragPhase.End` — drag gesture ended this frame (mouse button released)
+</ParamField>
+
+### Example
+
+```csharp
+float panelX = 0f;
+float panelY = 0f;
+
+titleBar
+    .OnDragStart(e => { /* optional: save initial position */ })
+    .OnDragging(e =>
+    {
+        panelX += e.Delta.X;
+        panelY += e.Delta.Y;
+    });
+```
+
+---
+
+## `ElementEvent` as `OnHover` / `OnEnter` / `OnLeave`
+
+The hover callbacks receive the `ElementEvent` base class directly (no subclass):
+
+| Callback | Fires when… |
+|---|---|
+| `OnHover` | Pointer is currently over the element (fires every frame) |
+| `OnEnter` | Pointer just moved onto the element this frame |
+| `OnLeave` | Pointer just moved off the element this frame |
+
+All standard `ElementEvent` fields are available: `PointerPosition`, `RelativePosition`, `NormalizedPosition`, `ElementRect`, `Source`.
+
+```csharp
+element
+    .OnEnter(e =>
+    {
+        isHovered = true;
+    })
+    .OnLeave(e =>
+    {
+        isHovered = false;
+    })
+    .OnHover(e =>
+    {
+        // e.NormalizedPosition.X → 0.0 at left edge, 1.0 at right edge
+        highlightX = e.NormalizedPosition.X;
+    });
+```
+
+---
+
+## `FocusEvent`
+
+Fired when an element gains or loses keyboard focus.
+
+**Namespace:** `Prowl.PaperUI.Events`  
+**Base:** none (standalone class)
+
+### Callback
+
+`OnFocusChange`
+
+### Properties
+
+<ParamField path="Source" type="ElementHandle">
+  The element whose focus state changed.
+</ParamField>
+
+<ParamField path="IsFocused" type="bool">
+  `true` if the element just gained focus; `false` if it just lost focus.
+</ParamField>
+
+### Example
+
+```csharp
+textField.OnFocusChange(e =>
+{
+    isFocused = e.IsFocused;
+    if (!e.IsFocused)
+        ValidateInput();
+});
+```
+
+---
+
+## `KeyEvent`
+
+Fired when a keyboard key is pressed while an element holds focus. Respects the auto-repeat settings configured on the `Paper` instance.
+
+**Namespace:** `Prowl.PaperUI.Events`  
+**Base:** none (standalone class)
+
+### Callback
+
+`OnKeyPressed`
+
+### Properties
+
+<ParamField path="Source" type="ElementHandle">
+  The focused element that received the key event.
+</ParamField>
+
+<ParamField path="Key" type="PaperKey">
+  The key that was pressed. See the complete `PaperKey` enum listing below.
+</ParamField>
+
+<ParamField path="IsRepeat" type="bool">
+  `true` when this event was generated by the auto-repeat mechanism (key held past the repeat delay), rather than a fresh key-down. Use this to distinguish "user just pressed Enter" from "Enter is being held".
+</ParamField>
+
+### Example
+
+```csharp
+textField.OnKeyPressed(e =>
+{
+    if (e.Key == PaperKey.Enter && !e.IsRepeat)
+        SubmitForm();
+
+    if (e.Key == PaperKey.Escape)
+        CancelEdit();
+
+    if (e.Key == PaperKey.V && paper.IsKeyDown(PaperKey.LeftControl))
+        PasteFromClipboard();
+});
+```
+
+---
+
+## `ScrollEvent`
+
+Fired when the mouse wheel is scrolled over an element.
+
+**Namespace:** `Prowl.PaperUI.Events`  
+**Base:** `ElementEvent`
+
+### Callback
+
+`OnScroll`
+
+### Properties
+
+<ParamField path="Delta" type="float">
+  The scroll wheel delta for this frame. Positive values typically indicate scrolling up/forward; negative values indicate scrolling down/backward (exact sign depends on the host platform's input delivery).
+</ParamField>
+
+All `ElementEvent` properties are also available.
+
+### Example
+
+```csharp
+scrollContainer.OnScroll(e =>
+{
+    scrollOffset -= e.Delta * scrollSpeed;
+    scrollOffset = Math.Clamp(scrollOffset, 0f, maxScroll);
+});
+```
+
+---
+
+## `TextInputEvent`
+
+Fired once per printable character entered while an element has keyboard focus. Handles encoding-aware character input, including IME composition results.
+
+**Namespace:** `Prowl.PaperUI.Events`  
+**Base:** none (standalone class)
+
+### Callback
+
+`OnTextInput`
+
+### Properties
+
+<ParamField path="Source" type="ElementHandle">
+  The focused element receiving text input.
+</ParamField>
+
+<ParamField path="Character" type="char">
+  The printable character entered. Carriage returns (`\r`) are automatically normalized to newlines (`\n`) by the input pipeline before this event fires.
+</ParamField>
+
+### Example
+
+```csharp
+textField.OnTextInput(e =>
+{
+    if (e.Character == '\n')
+        ConfirmInput();
+    else if (!char.IsControl(e.Character))
+        buffer += e.Character;
+});
+```
+
+<Tip>
+  `OnTextInput` is designed for building text editors and input fields. For hotkey detection, use `OnKeyPressed` with `PaperKey` instead — `TextInputEvent` only fires for characters that map to printable glyphs.
+</Tip>
+
+---
+
+## `PaperKey` enum
+
+`PaperKey` enumerates all keyboard keys recognized by Prowl.Paper's input system. Pass values to `KeyEvent.Key` comparisons, `paper.IsKeyDown()`, `paper.IsKeyPressed()`, and related query methods.
+
+**Namespace:** `Prowl.PaperUI`
+
+```csharp
+public enum PaperKey
+{
+    Unknown = 0,
+
+    // Alphabetic
+    A, B, C, D, E, F, G, H, I, J, K, L, M,
+    N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+
+    // Digits (top row)
+    Num1, Num2, Num3, Num4, Num5,
+    Num6, Num7, Num8, Num9, Num0,
+
+    // Function keys
+    F1, F2, F3, F4, F5, F6,
+    F7, F8, F9, F10, F11, F12,
+
+    // Editing & navigation
+    Enter, Escape, Backspace, Tab, Space,
+    Insert, Home, PageUp, Delete, End, PageDown,
+    Right, Left, Down, Up,
+
+    // Punctuation & symbols
+    Minus, Equals, LeftBracket, RightBracket, Backslash,
+    Semicolon, Apostrophe, Grave, Comma, Period, Slash,
+
+    // Lock & system
+    CapsLock, PrintScreen, ScrollLock, Pause,
+
+    // Numpad
+    NumLock,
+    KeypadDivide, KeypadMultiply, KeypadMinus, KeypadPlus,
+    KeypadEnter, KeypadEquals, KeypadDecimal,
+    Keypad0, Keypad1, Keypad2, Keypad3, Keypad4,
+    Keypad5, Keypad6, Keypad7, Keypad8, Keypad9,
+
+    // Modifier keys
+    LeftControl, LeftShift, LeftAlt, LeftSuper,
+    RightControl, RightShift, RightAlt, RightSuper,
+
+    // Media keys
+    AudioNext, AudioPrevious, AudioStop, AudioPlay, AudioMute,
+
+    // Application keys
+    Application, Menu, Select, Help
+}
+```
+
+### Modifier key helpers
+
+Modifier keys are queried directly on the `Paper` instance rather than through `KeyEvent`, because they may be pressed when no `OnKeyPressed` callback fires:
+
+```csharp
+bool ctrl  = paper.IsKeyDown(PaperKey.LeftControl) || paper.IsKeyDown(PaperKey.RightControl);
+bool shift = paper.IsKeyDown(PaperKey.LeftShift)   || paper.IsKeyDown(PaperKey.RightShift);
+bool alt   = paper.IsKeyDown(PaperKey.LeftAlt)     || paper.IsKeyDown(PaperKey.RightAlt);
+```
+
+---
+
+## `PaperMouseBtn` enum
+
+`PaperMouseBtn` identifies mouse buttons in `ClickEvent.Button` and `Paper` pointer query methods.
+
+**Namespace:** `Prowl.PaperUI`
+
+| Value | Description |
+|---|---|
+| `Unknown` | Unrecognized or unset button (default / sentinel value) |
+| `Left` | Primary (left) mouse button |
+| `Middle` | Middle mouse button / scroll wheel click |
+| `Right` | Secondary (right) mouse button |
+| `Button4` | Extra button 4 (commonly "back" on gaming mice) |
+| `Button5` | Extra button 5 (commonly "forward") |
+| `Button6` | Extra button 6 |
+| `Button7` | Extra button 7 |
+| `Button8` | Extra button 8 |
+
+```csharp
+element.OnClick(e =>
+{
+    switch (e.Button)
+    {
+        case PaperMouseBtn.Left:   HandlePrimary(); break;
+        case PaperMouseBtn.Right:  ShowContextMenu(e.PointerPosition); break;
+        case PaperMouseBtn.Middle: OpenInNewTab(); break;
+    }
+});
+```
+
+---
+
+## Event quick-reference
+
+<CardGroup cols={2}>
+
+<Card title="ClickEvent" icon="computer-mouse">
+  **Callbacks:** OnClick, OnPress, OnRelease, OnHeld, OnDoubleClick, OnRightClick  
+  **Key fields:** `Button`, `Phase`, `PointerPosition`, `RelativePosition`
+</Card>
+
+<Card title="DragEvent" icon="arrows-up-down-left-right">
+  **Callbacks:** OnDragStart, OnDragging, OnDragEnd  
+  **Key fields:** `Delta`, `TotalDelta`, `StartPosition`, `Phase`
+</Card>
+
+<Card title="ElementEvent" icon="arrow-pointer">
+  **Callbacks:** OnHover, OnEnter, OnLeave  
+  **Key fields:** `PointerPosition`, `RelativePosition`, `NormalizedPosition`
+</Card>
+
+<Card title="ScrollEvent" icon="scroll">
+  **Callbacks:** OnScroll  
+  **Key fields:** `Delta`, `PointerPosition`, `NormalizedPosition`
+</Card>
+
+<Card title="FocusEvent" icon="crosshairs">
+  **Callbacks:** OnFocusChange  
+  **Key fields:** `IsFocused`, `Source`
+</Card>
+
+<Card title="KeyEvent" icon="keyboard">
+  **Callbacks:** OnKeyPressed  
+  **Key fields:** `Key` (PaperKey), `IsRepeat`, `Source`
+</Card>
+
+<Card title="TextInputEvent" icon="font">
+  **Callbacks:** OnTextInput  
+  **Key fields:** `Character`, `Source`
+</Card>
+
+</CardGroup>

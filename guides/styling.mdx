@@ -1,0 +1,263 @@
+---
+title: "Styling Elements: Color, Borders, Gradients, and More"
+sidebarTitle: "Styling"
+description: "A complete reference for Prowl.Paper's visual styling API: backgrounds, gradients, borders, shadows, transforms, and reusable style templates."
+---
+
+Every element in Prowl.Paper is styled through a fluent chain of method calls on `ElementBuilder`. All styling methods return `this`, so you can compose any number of properties in a single expression. Styles are re-applied every frame — Paper evaluates them top to bottom, and later calls override earlier ones, which is the mechanism that makes state-driven overrides (hover, active, etc.) work naturally.
+
+## Background
+
+### Solid color
+
+```csharp
+Paper.Box("Panel")
+    .BackgroundColor(Color.FromArgb(255, 30, 32, 36));
+```
+
+### Gradients
+
+Paper supports three gradient types. All coordinate parameters are **relative to the element's own rectangle** (0.0 = start edge, 1.0 = end edge), so gradients scale automatically with the element.
+
+<CodeGroup>
+```csharp Linear
+Paper.Box("Hero")
+    .BackgroundLinearGradient(
+        x1: 0f, y1: 0f,   // top-left
+        x2: 0f, y2: 1f,   // bottom-left
+        color1: Color.FromArgb(255, 69, 135, 235),
+        color2: Color.FromArgb(255, 66, 68, 72));
+```
+
+```csharp Radial
+Paper.Box("Glow")
+    .BackgroundRadialGradient(
+        centerX: 0.5f, centerY: 0.5f,
+        innerRadius: 0f, outerRadius: 0.5f,
+        innerColor: Color.White,
+        outerColor: Color.Transparent);
+```
+
+```csharp Box
+Paper.Box("Inset")
+    .BackgroundBoxGradient(
+        centerX: 0.5f, centerY: 0.5f,
+        width: 0.8f, height: 0.6f,
+        radius: 8f, feather: 16f,
+        innerColor: Color.FromArgb(200, 255, 255, 255),
+        outerColor: Color.FromArgb(0, 255, 255, 255));
+```
+</CodeGroup>
+
+To remove a gradient that was set earlier in the chain:
+
+```csharp
+.ClearBackgroundGradient()
+```
+
+### Background image
+
+Pass any texture object that your renderer backend recognises. The texture is stretched to fill the element's layout rectangle.
+
+```csharp
+Paper.Box("Avatar")
+    .Size(64)
+    .Rounded(32)
+    .BackgroundImage(myTexture);
+```
+
+Remove the image with `.ClearBackgroundImage()`.
+
+## Border
+
+```csharp
+Paper.Box("Card")
+    .BorderColor(Color.FromArgb(120, 69, 135, 235))
+    .BorderWidth(2);
+```
+
+Both properties default to transparent / 0, so you only need to set the ones you want. Borders are rendered inside the element's bounds.
+
+## Corner rounding
+
+<CodeGroup>
+```csharp Uniform
+// All four corners
+.Rounded(8)
+```
+
+```csharp Per-corner
+// top-left, top-right, bottom-right, bottom-left
+.Rounded(tlRadius: 12, trRadius: 12, brRadius: 4, blRadius: 4)
+```
+
+```csharp Partial sides
+.RoundedTop(12)    // top-left + top-right
+.RoundedBottom(4)  // bottom-left + bottom-right
+.RoundedLeft(8)    // top-left + bottom-left
+.RoundedRight(8)   // top-right + bottom-right
+```
+</CodeGroup>
+
+## Box shadow
+
+```csharp
+Paper.Box("Elevated")
+    .BackgroundColor(cardBackground)
+    .BoxShadow(offsetX: 0, offsetY: 4, blur: 12, spread: 0,
+               color: Color.FromArgb(160, 0, 0, 0));
+```
+
+You can also construct a `BoxShadow` value ahead of time and pass it directly:
+
+```csharp
+var shadow = new BoxShadow(0, 4, 12, 0, Color.FromArgb(160, 0, 0, 0));
+.BoxShadow(shadow)
+```
+
+## Backdrop blur (frosted glass)
+
+`BackdropBlur` blurs whatever is rendered behind the element. Combine it with a translucent `BackgroundColor` for a classic frosted-glass panel.
+
+```csharp
+Paper.Box("FrostPanel")
+    .BackgroundColor(Color.FromArgb(80, 255, 255, 255))
+    .BackdropBlur(12f);
+```
+
+<Warning>
+Backdrop blur requires a renderer backend that supports the effect. On backends without support the property is silently ignored.
+</Warning>
+
+## Text color
+
+`TextColor` sets the foreground color for any text rendered inside the element:
+
+```csharp
+Paper.Box("Label")
+    .TextColor(Color.FromArgb(255, 226, 232, 240))
+    .Text("Hello, Paper!", myFont);
+```
+
+## Transforms
+
+All transform properties operate around a configurable origin point (default: element center, i.e. `0.5, 0.5`).
+
+```csharp
+Paper.Box("Spinning")
+    .TransformOrigin(0.5f, 0.5f) // already the default
+    .Rotate(animatedAngle)
+    .Scale(1.05f);
+```
+
+| Method | Description |
+|---|---|
+| `TranslateX(float)` / `TranslateY(float)` | Pixel offset along X or Y |
+| `Translate(float x, float y)` | Offset on both axes at once |
+| `ScaleX(float)` / `ScaleY(float)` | Per-axis scale factor |
+| `Scale(float)` | Uniform scale on both axes |
+| `Scale(float x, float y)` | Independent per-axis scale |
+| `Rotate(float degrees)` | Rotation in degrees |
+| `SkewX(float)` / `SkewY(float)` | Shear angles |
+| `Skew(float x, float y)` | Both axes at once |
+| `TransformOrigin(float x, float y)` | Pivot point (0–1 normalised) |
+
+Transform properties can be transitioned just like visual ones — see [Transitions](/guides/transitions).
+
+## StyleTemplate — reusable styles
+
+A `StyleTemplate` stores a snapshot of style calls that you can apply to many elements. This is the foundation for Paper's theming system.
+
+```csharp
+// Define once (e.g. during initialisation)
+var cardStyle = new StyleTemplate()
+    .BackgroundColor(cardBackground)
+    .Rounded(8)
+    .BoxShadow(0, 2, 6, 0, Color.FromArgb(100, 0, 0, 0));
+
+// Apply wherever you need it
+Paper.Box("Card1").Style(cardStyle);
+Paper.Box("Card2").Style(cardStyle);
+```
+
+### Creating derived templates
+
+```csharp
+var elevatedCard = cardStyle.Clone()
+    .BoxShadow(0, 8, 24, 0, Color.FromArgb(180, 0, 0, 0))
+    .Scale(1.02f);
+```
+
+`ApplyTo` lets you push one template's properties into another template:
+
+```csharp
+baseTemplate.ApplyTo(specialTemplate); // specialTemplate now inherits base properties
+```
+
+### Registering named styles
+
+Register a template by name on the `Paper` instance so it can be referenced by string later:
+
+```csharp
+gui.RegisterStyle("card", cardStyle);
+
+// Then on any element:
+Paper.Box("MyCard").Style("card");
+```
+
+`DefineStyle` combines creation and registration in one call:
+
+```csharp
+gui.DefineStyle("badge")
+    .Rounded(99)
+    .BackgroundColor(primaryColor)
+    .Padding(4, 8, 0, 0);
+```
+
+Styles can inherit from previously registered styles by name:
+
+```csharp
+gui.DefineStyle("badge-error", inheritFrom: "badge")
+    .BackgroundColor(Color.Red);
+```
+
+## StyleFamilyBuilder — base + state variants
+
+`CreateStyleFamily` registers a base template plus optional per-state overrides (hover, focused, active) under a shared name prefix. Paper's `ApplyStyleWithStates` then picks the right variant automatically based on the element's current interaction state.
+
+```csharp
+gui.CreateStyleFamily("button")
+    .Base(new StyleTemplate()
+        .Height(40)
+        .Rounded(8)
+        .BackgroundColor(Color.FromArgb(50, 0, 0, 0))
+        .Transition(GuiProp.BackgroundColor, 0.2f)
+        .Transition(GuiProp.ScaleX, 0.1f)
+        .Transition(GuiProp.ScaleY, 0.1f))
+    .Hovered(new StyleTemplate()
+        .BackgroundColor(Color.FromArgb(100, primaryColor))
+        .Rounded(12))
+    .Active(new StyleTemplate()
+        .Scale(0.95f)
+        .BackgroundColor(Color.FromArgb(150, primaryColor)))
+    .Register();
+
+// Usage
+Paper.Box("SubmitBtn").Style("button");
+```
+
+<Tip>
+Transitions placed in the **base** template apply to every state change. Put them in the base rather than in each state override so they fire in both directions (on enter and on leave).
+</Tip>
+
+You can also register style families manually via `RegisterStyleFamily` if you prefer to build the templates separately:
+
+```csharp
+gui.RegisterStyleFamily(
+    baseName:     "card",
+    baseStyle:    baseTemplate,
+    hoveredStyle: hoveredTemplate,
+    activeStyle:  activeTemplate);
+```
+
+Named pseudo-state styles follow the convention `"name:hovered"`, `"name:focused"`, and `"name:active"`, which you can also register individually with `RegisterStyle`.

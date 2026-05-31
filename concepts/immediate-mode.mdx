@@ -1,0 +1,138 @@
+---
+title: "How Immediate-Mode UI Works in Paper"
+sidebarTitle: "Immediate Mode"
+description: "Learn the IMGUI paradigm: why Paper rebuilds its element tree every frame, how element identity works, and how to persist state across frames."
+---
+
+Immediate-mode UI (IMGUI) flips the traditional model on its head. Instead of creating widget objects once and then mutating them over time, you describe your **entire UI from scratch on every frame** — Paper handles the rest. This page explains what that means in practice, why it is powerful, and how Paper keeps things efficient behind the scenes.
+
+## The Frame Loop
+
+Every frame, your code calls `BeginFrame`, declares all the elements you want to see, then calls `EndFrame`. Paper collects those declarations, runs layout, and renders the result.
+
+```csharp
+void RenderUI()
+{
+    paper.BeginFrame(deltaTime);
+
+    // Declare your entire UI here — every frame
+    using (paper.Column("Root").Enter())
+    {
+        paper.Box("Header").Height(60).BackgroundColor(Color.DarkBlue);
+        paper.Box("Body").Height(paper.Stretch());
+    }
+
+    paper.EndFrame();
+}
+```
+
+`BeginFrame` resets the internal element tree. `EndFrame` runs layout, triggers interactions, and renders — in that order.
+
+<Note>
+Nothing you declare survives past `EndFrame` as a live object. The element tree is rebuilt completely the next time `BeginFrame` runs.
+</Note>
+
+## Retained Mode vs. Immediate Mode
+
+To understand why this matters, compare the two approaches with a simple toggle button.
+
+<CodeGroup>
+```csharp Retained (hypothetical)
+// You create the widget once, store it, and mutate it later
+var button = new Button("Dark Mode");
+button.OnClick += () => isDarkMode = !isDarkMode;
+ui.Add(button);
+
+// Later, somewhere else, you update it:
+button.Text = isDarkMode ? "Light Mode" : "Dark Mode";
+button.BackgroundColor = isDarkMode ? Color.Dark : Color.Light;
+```
+
+```csharp Immediate Mode (Paper)
+// You describe the button completely every frame — no stored reference needed
+paper.Box("DarkModeToggle")
+    .BackgroundColor(isDarkMode ? Color.Dark : Color.Light)
+    .Text(isDarkMode ? "Light Mode" : "Dark Mode", myFont)
+    .OnClick(_ => isDarkMode = !isDarkMode);
+```
+</CodeGroup>
+
+In the retained approach, you must keep widget references in sync with your application state. In Paper, your application state **is** the UI — you simply read it during the frame. There is no divergence to manage.
+
+## How Element Identity Works
+
+Because the element tree is rebuilt every frame, Paper needs a stable way to match this frame's elements to last frame's elements. This is how animated transitions, hover states, and per-element storage all survive across frames.
+
+Every element gets a deterministic integer ID computed from four ingredients:
+
+```csharp
+int storageHash = HashCode.Combine(
+    CurrentParent.Data.ID,  // parent's ID  — scopes the ID to the subtree
+    _IDStack.Peek(),        // active PushID scope  — scopes inside loops
+    stringID,              // the string you pass to Box/Row/Column
+    intID,                 // optional integer you pass (useful in loops)
+    lineID                 // [CallerLineNumber] — automatically injected
+);
+```
+
+This means two different call sites that happen to pass the same `stringID` still get distinct IDs because `lineID` differs. An element created inside a `for` loop needs the loop index passed as `intID` (or a `PushID` scope) to stay distinct across iterations.
+
+<Warning>
+If two elements in the same parent resolve to the same hash, Paper throws an exception: `"Element already exists with this ID"`. The most common cause is creating elements in a loop without passing a unique `intID` or using `PushID`.
+</Warning>
+
+## Persisting State Across Frames
+
+IMGUI elements don't exist between frames, so any state that needs to survive — scroll position, open/closed flag, animation progress — must be stored explicitly. Paper provides per-element storage keyed by your element's stable ID:
+
+```csharp
+using (paper.Column("ExpandablePanel").Enter())
+{
+    // Read persisted state (defaults to false on first frame)
+    bool isOpen = paper.GetElementStorage<bool>("isOpen");
+
+    paper.Box("Header")
+        .Height(40)
+        .BackgroundColor(Color.Gray)
+        .Text(isOpen ? "▼ Collapse" : "► Expand", myFont)
+        .OnClick(_ => paper.SetElementStorage("isOpen", !isOpen));
+
+    if (isOpen)
+    {
+        paper.Box("Content")
+            .Height(120)
+            .BackgroundColor(Color.LightGray);
+    }
+}
+```
+
+`GetElementStorage<T>` and `SetElementStorage<T>` always operate against `CurrentParent` unless you pass an explicit `ElementHandle`. Storage entries whose element was not created in the last frame are automatically cleaned up by `EndFrame`.
+
+<Tip>
+Storage keys are plain strings — namespace them descriptively (e.g. `"scrollY"`, `"isOpen"`) to avoid accidental collisions between components that share the same element ID.
+</Tip>
+
+There is also a root-level store for truly global state:
+
+```csharp
+// Survives across all frames and is not tied to any element
+paper.SetRootStorage("globalFlag", true);
+bool flag = paper.GetRootStorage<bool>("globalFlag");
+```
+
+## When to Use Immediate Mode
+
+IMGUI shines for:
+
+- **Game UIs and tooling** — content changes frequently and closely follows application state.
+- **Developer tools** — property inspectors, debuggers, level editors.
+- **Dynamic lists and data grids** — add or remove rows without managing widget lifecycles.
+- **Prototyping** — iterate quickly without architecture ceremony.
+
+Retained-mode frameworks are a better fit when:
+
+- The UI is largely static and driven by data binding infrastructure (e.g. MVVM).
+- Accessibility trees or native widget semantics are a hard requirement.
+- You need deep OS integration (system dialogs, native menus).
+
+Paper sits comfortably in the game engine / interactive tool space where IMGUI's directness is a significant advantage.

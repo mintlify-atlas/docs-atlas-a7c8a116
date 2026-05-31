@@ -1,0 +1,387 @@
+---
+title: "Paper Animation API: AnimateBool, Spring, Shake, and More"
+sidebarTitle: "Animation API"
+description: "Stateful per-element animation helpers: boolean tweens, exponential smoothing, springs, color chase, angle interpolation, one-shots, pulses, and shake."
+---
+
+Paper's animation primitives are immediate-mode helpers that store their state in the current element's storage bucket. You call them every frame — they advance internally using `DeltaTime` and return the current animated value. Because state is tied to `CurrentParent`, it is automatically cleaned up when the element disappears and resets when the element reappears.
+
+Each primitive accepts an optional `id` string or relies on `[CallerLineNumber]` to produce a unique storage slot. This means you can stack multiple independent animations on one element without collisions, but calls inside loops or wrapper methods should pass an explicit `id`.
+
+---
+
+## Timing Properties
+
+<ResponseField name="DeltaTime" type="float">
+  Seconds elapsed since the previous frame, supplied via `BeginFrame(deltaTime)`. All animation primitives read this to advance frame-rate-independently.
+</ResponseField>
+
+<ResponseField name="Time" type="float">
+  Monotonically increasing total elapsed seconds since the `Paper` instance was created. Used by `Pulse` and `Shake` for phase-based effects.
+</ResponseField>
+
+---
+
+## AnimateBool
+
+```csharp
+public float AnimateBool(
+    bool target,
+    float duration = 0.2f,
+    Func<float, float>? easing = null,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Smoothly animates a `0..1` progress value toward `1` when `target` is `true` and toward `0` when it is `false`. The underlying progress is stored linearly, so reversing `target` mid-animation produces a natural reversal regardless of the easing shape.
+
+<ParamField path="target" type="bool" required>
+  Direction to animate toward. `true` drives progress toward `1`; `false` drives it toward `0`.
+</ParamField>
+
+<ParamField path="duration" type="float" default="0.2">
+  Seconds to traverse the full `0 → 1` (or `1 → 0`) range. Pass `0` to snap instantly.
+</ParamField>
+
+<ParamField path="easing" type="Func&lt;float, float&gt;?" default="null">
+  An optional easing function applied to the raw progress on read. Use any method from the `Easing` static class (e.g., `Easing.SineInOut`). `null` = linear.
+</ParamField>
+
+<ParamField path="id" type="string?" default="null">
+  Explicit slot identifier. Required when calling from inside a loop or a helper method that hides the real call site.
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Eased `0..1` progress value.
+</ResponseField>
+
+```csharp
+// Hover fade-in with a sine ease
+bool isHovered = paper.IsParentHovered;
+float t = paper.AnimateBool(isHovered, 0.15f, Easing.SineInOut);
+
+paper.Box("overlay")
+    .BackgroundColor(new Color(1, 1, 1, t * 0.3f));
+```
+
+---
+
+## AnimateFloat
+
+```csharp
+public float AnimateFloat(
+    float target,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Chases a continuously-changing numeric `target` using frame-rate-independent exponential smoothing (`1 - exp(-speed * dt)`). Higher `speed` produces faster catch-up — `8` reaches ~99% within roughly 0.5 seconds.
+
+<ParamField path="target" type="float" required>The value to converge toward each frame.</ParamField>
+<ParamField path="speed" type="float" default="8.0">Smoothing speed. Higher = faster response.</ParamField>
+<ParamField path="id" type="string?" default="null">Explicit slot ID for loops or wrappers.</ParamField>
+
+<ResponseField name="return" type="float">Current interpolated value.</ResponseField>
+
+<Tip>
+  Prefer `AnimateFloat` over `AnimateBool` when the target changes continuously every frame (e.g., scroll offset, a live number readout). For binary on/off transitions, `AnimateBool` gives more control over duration and easing.
+</Tip>
+
+```csharp
+float smoothProgress = paper.AnimateFloat(loadingProgress, speed: 5f);
+```
+
+---
+
+## AnimateSpring
+
+```csharp
+public float AnimateSpring(
+    float target,
+    float frequency = 6f,
+    float damping = 0.7f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Spring-physics chase toward `target`. Maintains both a position and a velocity, so rapid target changes produce natural overshoot and settling behaviour. Good for UI elements that should feel "alive" — panel slide-ins, bouncy toggles, thumb snapping.
+
+<ParamField path="target" type="float" required>Value to converge toward.</ParamField>
+
+<ParamField path="frequency" type="float" default="6.0">
+  Oscillation frequency in Hz (angular frequency = `frequency × 2π`). Higher values make the spring stiffer and the response faster.
+</ParamField>
+
+<ParamField path="damping" type="float" default="0.7">
+  `0` = undamped (rings forever). `1` = critically damped (no overshoot). Values between these produce decaying oscillation. Values above `1` are over-damped (slow, no overshoot).
+</ParamField>
+
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="float">Current spring position. May transiently exceed `target` due to overshoot.</ResponseField>
+
+```csharp
+// Springy panel slide — snaps into place with a gentle bounce
+float panelX = paper.AnimateSpring(isOpen ? 0f : -300f, frequency: 5f, damping: 0.6f);
+paper.Box("panel").Left(paper.Pixels(panelX));
+```
+
+---
+
+## AnimateColor
+
+```csharp
+public Color AnimateColor(
+    Color target,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Color-flavoured exponential smoothing — interpolates each RGBA channel independently toward `target`. Each call site gets its own slot on `CurrentParent`.
+
+<ParamField path="target" type="Color" required>The color to converge toward.</ParamField>
+<ParamField path="speed" type="float" default="8.0">Smoothing speed per channel.</ParamField>
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="Color">Current interpolated color.</ResponseField>
+
+```csharp
+Color targetColor = isHovered ? Color.Cyan : Color.Gray;
+Color animColor = paper.AnimateColor(targetColor, speed: 10f);
+
+paper.Box("btn").BackgroundColor(animColor);
+```
+
+---
+
+## AnimateVec2
+
+```csharp
+public Float2 AnimateVec2(
+    Float2 target,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Two-dimensional variant of `AnimateFloat`. Useful for chasing positions, sizes, or any other 2D quantity with exponential smoothing.
+
+<ParamField path="target" type="Float2" required>Target 2D value.</ParamField>
+<ParamField path="speed" type="float" default="8.0">Smoothing speed.</ParamField>
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="Float2">Current interpolated vector.</ResponseField>
+
+---
+
+## AnimateAngle
+
+```csharp
+public float AnimateAngle(
+    float targetDegrees,
+    float speed = 8f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Angle-aware exponential smoothing in degrees. Always takes the shortest path around the circle — animating from `350°` to `10°` goes through `360°` (20° arc), not the long way (340° arc).
+
+<ParamField path="targetDegrees" type="float" required>Target angle in degrees.</ParamField>
+<ParamField path="speed" type="float" default="8.0">Smoothing speed.</ParamField>
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="float">
+  Current angle in degrees. May drift outside `[0, 360)` over time; apply `% 360f` if you need a normalized output.
+</ResponseField>
+
+```csharp
+float angle = paper.AnimateAngle(isExpanded ? 180f : 0f, speed: 12f);
+// Use angle to rotate a chevron icon
+```
+
+---
+
+## OneShot
+
+```csharp
+public float OneShot(
+    bool trigger,
+    float duration = 0.4f,
+    Func<float, float>? easing = null,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Fire-once ramp: when `trigger` transitions from `false` to `true` (rising edge), `OneShot` ramps from `0` to `1` over `duration` seconds and stays at `1`. When `trigger` returns to `false`, the value resets to `0` immediately.
+
+Use this for flash effects, one-time entry animations, or badge pop-ins that should only play once per interaction.
+
+<ParamField path="trigger" type="bool" required>Rising edge fires the ramp; falling edge resets it.</ParamField>
+<ParamField path="duration" type="float" default="0.4">Seconds to ramp from `0` to `1`.</ParamField>
+<ParamField path="easing" type="Func&lt;float, float&gt;?" default="null">Optional easing applied to the output.</ParamField>
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="float">`0..1` progress value, eased if a function is provided.</ResponseField>
+
+```csharp
+bool clicked = paper.IsPointerPressed(PaperMouseBtn.Left) && paper.IsParentHovered;
+float flash = paper.OneShot(clicked, 0.3f, Easing.ExpoOut);
+
+paper.Box("btn").BackgroundColor(Color.Lerp(normalColor, flashColor, flash));
+```
+
+---
+
+## Pulse
+
+```csharp
+public float Pulse(float period = 1.5f)
+```
+
+A stateless, continuously-cycling cosine oscillator driven by `Time`. Returns a smooth `0..1` wave. Useful for breathing highlights, blinking cursors, and idle glow effects.
+
+<ParamField path="period" type="float" default="1.5">
+  Duration of one full cycle in seconds. Values `≤ 0` return `0`.
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Current pulse value in `[0, 1]`, rising from `0` to `1` and back smoothly each period.
+</ResponseField>
+
+```csharp
+// Breathing glow on focused element
+float glow = paper.Pulse(period: 2.0f);
+paper.Box("focused-ring").BorderColor(new Color(0.4f, 0.8f, 1f, glow));
+```
+
+<Note>
+  `Pulse` is stateless — it reads `Time` directly and produces the same value for every element that calls it with the same `period` in the same frame. To phase-shift for staggered effects, offset by index: `Pulse(period)` where you shift `Time` in your own calculation, or use a separate `AnimateBool`/`AnimateFloat` per element.
+</Note>
+
+---
+
+## StableFor
+
+```csharp
+public float StableFor(
+    bool current,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Returns the number of seconds `current` has held its present value without changing. Resets to `0` the frame the value flips. Unlocks long-press detection, hover-delayed tooltips, idle detection, and staggered list entrances.
+
+<ParamField path="current" type="bool" required>The boolean value to track stability for.</ParamField>
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="float">Seconds `current` has been continuously stable at its current value.</ResponseField>
+
+```csharp
+bool hovered = paper.IsParentHovered;
+
+// Tooltip appears only after hovering for 0.4 s
+float tooltipT = paper.AnimateBool(hovered && paper.StableFor(hovered) > 0.4f);
+
+// Long-press action after 0.6 s of held button
+bool held = paper.IsPointerDown(PaperMouseBtn.Left) && paper.IsParentActive;
+if (held && paper.StableFor(held) > 0.6f)
+    TriggerLongPress();
+```
+
+---
+
+## Shake
+
+```csharp
+public Float2 Shake(
+    bool trigger,
+    float intensity = 4f,
+    float decay = 6f,
+    float frequency = 30f,
+    string? id = null,
+    [CallerLineNumber] int callerLine = 0)
+```
+
+Rising-edge screen shake: when `trigger` goes from `false` to `true`, an internal amplitude kicks to `1` and then decays exponentially. Returns a `Float2` offset you can apply to a translate or position style property. Apply the result every frame to drive the shake animation.
+
+<ParamField path="trigger" type="bool" required>Rising edge fires the shake; value holds while still triggered.</ParamField>
+<ParamField path="intensity" type="float" default="4.0">Peak displacement in pixels at amplitude `1`.</ParamField>
+
+<ParamField path="decay" type="float" default="6.0">
+  Exponential decay rate in `1/s`. Higher = shake fades faster. `6` gives roughly a 0.5-second tail.
+</ParamField>
+
+<ParamField path="frequency" type="float" default="30.0">
+  Oscillation speed in Hz-like units. `30` produces quick chatter; lower values produce slower wobble.
+</ParamField>
+
+<ParamField path="id" type="string?" default="null">Explicit slot ID.</ParamField>
+
+<ResponseField name="return" type="Float2">
+  A 2D offset in pixels. Returns `Float2.Zero` when amplitude drops below `0.001`.
+</ResponseField>
+
+```csharp
+bool gotHit = damageEventThisFrame;
+Float2 shakeOffset = paper.Shake(gotHit, intensity: 6f, decay: 8f, frequency: 25f);
+
+paper.Box("healthbar")
+    .TranslateX(shakeOffset.X)
+    .TranslateY(shakeOffset.Y);
+```
+
+---
+
+## The Easing Class
+
+All animation methods that accept a `Func<float,float>? easing` parameter work with the static `Easing` class, which provides a comprehensive set of easing functions.
+
+<CardGroup cols={2}>
+  <Card title="Basic">
+    `Easing.Linear` — no easing
+
+    `Easing.Step` — instant jump at midpoint
+
+    `Easing.SmoothStep` — smooth Hermite
+
+    `Easing.SmootherStep` — higher-order Hermite
+  </Card>
+  <Card title="Power curves">
+    `EaseIn` / `EaseOut` / `EaseInOut` (quadratic)
+
+    `CubicIn` / `CubicOut` / `CubicInOut`
+
+    `QuartIn` / `QuartOut` / `QuartInOut`
+
+    `QuintIn` / `QuintOut` / `QuintInOut`
+  </Card>
+  <Card title="Natural">
+    `SineIn` / `SineOut` / `SineInOut`
+
+    `ExpoIn` / `ExpoOut` / `ExpoInOut`
+
+    `CircIn` / `CircOut` / `CircInOut`
+  </Card>
+  <Card title="Expressive">
+    `BackIn` / `BackOut` / `BackInOut` (overshoot)
+
+    `ElasticIn` / `ElasticOut` / `ElasticInOut`
+
+    `BounceIn` / `BounceOut` / `BounceInOut`
+
+    `Easing.Spring(t, dampingRatio, angularFrequency)`
+  </Card>
+</CardGroup>
+
+Every easing function has the signature `float Fn(float t)` where `t` is normalized `0..1` input and the return value is the transformed output (may exceed `0..1` for elastic/back/spring variants).
+
+```csharp
+// Use any easing method as a delegate
+float t = paper.AnimateBool(isOpen, 0.3f, Easing.BackOut);
+
+// Or with the configurable Spring function
+float t2 = paper.AnimateBool(isOpen, 0.5f,
+    t => Easing.Spring(t, dampingRatio: 0.4f, angularFrequency: 15f));
+```

@@ -1,0 +1,369 @@
+---
+title: "Paper Style API: Templates, Families, and Pseudo-States"
+sidebarTitle: "Styles API"
+description: "Define reusable StyleTemplates, register style families with hover/focus/active pseudo-states, and apply them to elements with automatic state resolution."
+---
+
+Paper's style system lets you define named `StyleTemplate` objects — reusable bundles of visual and layout properties — and register them on the `Paper` instance. You can then apply a template by name to any element, and with style families you get automatic hover, focus, and active pseudo-state layering in one call.
+
+---
+
+## StyleTemplate
+
+A `StyleTemplate` is a deferred style descriptor — a bag of property setters that can be applied to one or more elements. It extends the same `StyleSetterBase<T>` as `ElementBuilder`, so every layout and appearance setter available on a builder is also available on a template.
+
+### Creating Templates
+
+You can create a `StyleTemplate` directly or through the `Paper.DefineStyle` methods (which also register it by name):
+
+```csharp
+// Standalone template (not registered)
+var template = new StyleTemplate();
+template.BackgroundColor(Color.DarkBlue).Rounded(8f).Padding(12f);
+
+// Named template via Paper
+StyleTemplate btn = paper.DefineStyle("button")
+    .BackgroundColor(new Color(0.2f, 0.5f, 0.9f))
+    .Rounded(6f)
+    .TextColor(Color.White);
+```
+
+### ApplyTo (ElementHandle)
+
+```csharp
+public StyleTemplate ApplyTo(ElementHandle element)
+```
+
+Applies all properties stored in this template to `element`'s style. Properties not set by the template are left at their current (or default) values.
+
+<ParamField path="element" type="ElementHandle" required>The element to style.</ParamField>
+
+<ResponseField name="return" type="StyleTemplate">Returns `this` for fluent chaining.</ResponseField>
+
+### ApplyTo (StyleTemplate)
+
+```csharp
+public StyleTemplate ApplyTo(StyleTemplate other)
+```
+
+Merges this template's properties into `other`. Used internally by `DefineStyle(name, inheritFrom[])` to implement style inheritance.
+
+<ParamField path="other" type="StyleTemplate" required>The target template to merge into.</ParamField>
+
+<ResponseField name="return" type="StyleTemplate">Returns `other` for chaining.</ResponseField>
+
+### Clone
+
+```csharp
+public StyleTemplate Clone()
+```
+
+Produces a deep copy of this template. Useful for creating a variant without mutating the original.
+
+<ResponseField name="return" type="StyleTemplate">A new `StyleTemplate` with the same property values.</ResponseField>
+
+---
+
+## Defining and Registering Styles
+
+### DefineStyle (no inheritance)
+
+```csharp
+public StyleTemplate DefineStyle(string name)
+```
+
+Creates a new empty `StyleTemplate`, registers it under `name`, and returns it for fluent configuration.
+
+<ParamField path="name" type="string" required>The unique key under which the template is stored.</ParamField>
+
+<ResponseField name="return" type="StyleTemplate">The new template, ready for property setters.</ResponseField>
+
+### DefineStyle (with inheritance)
+
+```csharp
+public StyleTemplate DefineStyle(string name, params string[] inheritFrom)
+```
+
+Creates a template pre-populated with all properties from the listed parent styles (applied in order), then registers it under `name`. The parent styles must already be registered.
+
+<ParamField path="name" type="string" required>Name for the new template.</ParamField>
+<ParamField path="inheritFrom" type="string[]" required>
+  One or more names of previously registered templates to inherit from. Applied left-to-right so later parents override earlier ones.
+</ParamField>
+
+<ResponseField name="return" type="StyleTemplate">The new combined template.</ResponseField>
+
+```csharp
+paper.DefineStyle("base-button")
+    .Rounded(6f)
+    .Padding(8f, 16f);
+
+// "primary-button" inherits base-button and adds colour
+paper.DefineStyle("primary-button", "base-button")
+    .BackgroundColor(new Color(0.2f, 0.5f, 0.9f))
+    .TextColor(Color.White);
+```
+
+### RegisterStyle
+
+```csharp
+public void RegisterStyle(string name, StyleTemplate template)
+```
+
+Registers an externally constructed `StyleTemplate` under `name`. Overwrites any previously registered style with the same name.
+
+<ParamField path="name" type="string" required>Registration key.</ParamField>
+<ParamField path="template" type="StyleTemplate" required>The template to store.</ParamField>
+
+### TryGetStyle
+
+```csharp
+public bool TryGetStyle(string name, out StyleTemplate? template)
+```
+
+Attempts to retrieve a registered template by name.
+
+<ParamField path="name" type="string" required>The registration key to look up.</ParamField>
+<ParamField path="template" type="StyleTemplate?" required>Receives the template if found; `null` otherwise.</ParamField>
+
+<ResponseField name="return" type="bool">`true` if a template with `name` exists.</ResponseField>
+
+---
+
+## Style Families
+
+A style family groups a base style with named pseudo-state variants (`normal`, `hovered`, `focused`, `active`). Calling `ApplyStyleWithStates` applies the base and then layers the appropriate pseudo-state style on top based on the element's current interaction state.
+
+Pseudo-state styles are stored internally under the naming convention `"baseName:hovered"`, `"baseName:focused"`, and `"baseName:active"`.
+
+### RegisterStyleFamily
+
+```csharp
+public void RegisterStyleFamily(
+    string baseName,
+    StyleTemplate baseStyle,
+    StyleTemplate normalStyle = null,
+    StyleTemplate hoveredStyle = null,
+    StyleTemplate focusedStyle = null,
+    StyleTemplate activeStyle = null)
+```
+
+Registers all provided templates at once under their conventional pseudo-state names.
+
+<ParamField path="baseName" type="string" required>Base name (e.g., `"button"`). The base style is registered as `"button"`; pseudo-states as `"button:hovered"`, `"button:focused"`, `"button:active"`.</ParamField>
+<ParamField path="baseStyle" type="StyleTemplate" required>Applied unconditionally to all elements using this family.</ParamField>
+<ParamField path="normalStyle" type="StyleTemplate" default="null">Registered as `"baseName:normal"` (optional).</ParamField>
+<ParamField path="hoveredStyle" type="StyleTemplate" default="null">Applied when the element is hovered.</ParamField>
+<ParamField path="focusedStyle" type="StyleTemplate" default="null">Applied when the element has keyboard focus.</ParamField>
+<ParamField path="activeStyle" type="StyleTemplate" default="null">Applied when the element is being pressed.</ParamField>
+
+### CreateStyleFamily
+
+```csharp
+public StyleFamilyBuilder CreateStyleFamily(string baseName)
+```
+
+Returns a `StyleFamilyBuilder` for fluent family construction. Call `.Register()` at the end to commit.
+
+<ParamField path="baseName" type="string" required>Base name for the family.</ParamField>
+
+<ResponseField name="return" type="StyleFamilyBuilder">A builder for chaining state assignments.</ResponseField>
+
+### StyleFamilyBuilder
+
+`StyleFamilyBuilder` is a fluent helper returned by `CreateStyleFamily`. All methods return the builder itself for chaining; call `.Register()` to finalize.
+
+| Method | Description |
+|---|---|
+| `.Base(StyleTemplate style)` | Sets the unconditional base style. |
+| `.Normal(StyleTemplate style)` | Sets the `"baseName:normal"` variant. |
+| `.Hovered(StyleTemplate style)` | Sets the `"baseName:hovered"` variant. |
+| `.Focused(StyleTemplate style)` | Sets the `"baseName:focused"` variant. |
+| `.Active(StyleTemplate style)` | Sets the `"baseName:active"` variant. |
+| `.Register()` | Commits all templates by calling `RegisterStyleFamily`. |
+
+```csharp
+var baseBtn = new StyleTemplate()
+    .Rounded(6f)
+    .BackgroundColor(new Color(0.25f, 0.25f, 0.25f))
+    .TextColor(Color.White);
+
+var hovBtn = new StyleTemplate()
+    .BackgroundColor(new Color(0.35f, 0.35f, 0.35f));
+
+var activeBtn = new StyleTemplate()
+    .BackgroundColor(new Color(0.15f, 0.15f, 0.15f))
+    .TranslateY(1f);          // slight press-down effect
+
+paper.CreateStyleFamily("button")
+    .Base(baseBtn)
+    .Hovered(hovBtn)
+    .Active(activeBtn)
+    .Register();
+```
+
+---
+
+## Applying Styles with Pseudo-States
+
+### ApplyStyleWithStates
+
+```csharp
+public void ApplyStyleWithStates(ElementHandle element, string baseName)
+```
+
+Applies the base style named `baseName` to `element`, then layers each applicable pseudo-state style on top. The order of application is: `base` → `hovered` (if hovered) → `focused` (if focused) → `active` (if active). Missing pseudo-state styles are silently skipped.
+
+<ParamField path="element" type="ElementHandle" required>The element to style.</ParamField>
+<ParamField path="baseName" type="string" required>The base name of the style family (e.g., `"button"`).</ParamField>
+
+<Info>
+  `ApplyStyleWithStates` checks interaction state using `IsElementHovered`, `IsElementFocused`, and `IsElementActive` from the interaction system. These reflect the **previous frame's** state during the draw phase, which is correct for smooth transitions and is identical to how CSS pseudo-classes work in retained-mode UIs.
+</Info>
+
+```csharp
+// In your button draw code:
+using (paper.Box("my-btn").Enter())
+{
+    // Apply the full family: base + whichever pseudo-states are active
+    paper.ApplyStyleWithStates(paper.CurrentParent, "button");
+
+    paper.Box("label").Text("Click me");
+}
+```
+
+---
+
+## TransitionConfig
+
+`TransitionConfig` describes how a style property animates from its previous value to its new value. You attach transitions via `ElementBuilder.Transition(...)` or the corresponding setter on `StyleTemplate`.
+
+```csharp
+public class TransitionConfig
+{
+    public float Duration { get; set; }
+    public Func<float, float>? EasingFunction { get; set; }
+}
+```
+
+<ResponseField name="Duration" type="float">
+  Total transition time in seconds. A `Duration` of `0` means the property snaps instantly.
+</ResponseField>
+
+<ResponseField name="EasingFunction" type="Func&lt;float, float&gt;?">
+  Optional easing applied to the `0..1` interpolation progress. Use any method from the `Easing` static class, or `null` for linear interpolation.
+</ResponseField>
+
+Paper interpolates the following value types natively: `float`, `double`, `int`, `Color`, `Float2`, `Float3`, `Float4`, `UnitValue`, `Transform2D`, `Gradient`, and `BoxShadow`. Unsupported types snap to the target value at the end of the transition duration.
+
+---
+
+## GuiProp Enum
+
+`GuiProp` identifies the style properties that can be set, transitioned, and read by the style system. It is used by `StyleSetterBase<T>` internally and exposed for advanced scenarios such as writing custom style setters.
+
+<CardGroup cols={2}>
+  <Card title="Visual">
+    `BackgroundColor`, `BackgroundGradient`, `BackgroundImage`
+
+    `BorderColor`, `BorderWidth`
+
+    `Rounded` (corner radii as `Float4`)
+
+    `BoxShadow`, `BackdropBlur`
+  </Card>
+  <Card title="Sizing">
+    `Width`, `Height`
+
+    `MinWidth`, `MaxWidth`
+
+    `MinHeight`, `MaxHeight`
+
+    `AspectRatio`
+  </Card>
+  <Card title="Positioning">
+    `Left`, `Right`, `Top`, `Bottom`
+
+    `MinLeft/MaxLeft`, `MinRight/MaxRight`
+
+    `MinTop/MaxTop`, `MinBottom/MaxBottom`
+  </Card>
+  <Card title="Children & Spacing">
+    `ChildLeft`, `ChildRight`, `ChildTop`, `ChildBottom`
+
+    `RowBetween`, `ColBetween`
+
+    `PaddingLeft`, `PaddingRight`, `PaddingTop`, `PaddingBottom`
+  </Card>
+  <Card title="Transform">
+    `TranslateX`, `TranslateY`
+
+    `ScaleX`, `ScaleY`
+
+    `Rotate`, `SkewX`, `SkewY`
+
+    `OriginX`, `OriginY`, `Transform`
+  </Card>
+  <Card title="Text">
+    `TextColor`, `FontSize`
+
+    `LetterSpacing`, `WordSpacing`
+
+    `LineHeight`, `TabSize`
+  </Card>
+</CardGroup>
+
+---
+
+## Complete Style Family Example
+
+```csharp
+void RegisterButtonStyles(Paper paper)
+{
+    // Base: shared geometry
+    var @base = new StyleTemplate()
+        .Rounded(6f)
+        .PaddingLeft(paper.Pixels(16))
+        .PaddingRight(paper.Pixels(16))
+        .PaddingTop(paper.Pixels(8))
+        .PaddingBottom(paper.Pixels(8))
+        .BackgroundColor(new Color(0.22f, 0.22f, 0.22f))
+        .TextColor(Color.White)
+        .FontSize(14f);
+
+    // Hovered: brighter background
+    var hovered = new StyleTemplate()
+        .BackgroundColor(new Color(0.32f, 0.32f, 0.32f));
+
+    // Focused: visible focus ring
+    var focused = new StyleTemplate()
+        .BorderColor(new Color(0.4f, 0.7f, 1f))
+        .BorderWidth(2f);
+
+    // Active / pressed: darker + slight downward nudge
+    var active = new StyleTemplate()
+        .BackgroundColor(new Color(0.12f, 0.12f, 0.12f))
+        .TranslateY(1f);
+
+    paper.CreateStyleFamily("button")
+        .Base(@base)
+        .Hovered(hovered)
+        .Focused(focused)
+        .Active(active)
+        .Register();
+}
+
+// Usage in draw loop:
+void DrawButton(Paper paper, string label)
+{
+    using (paper.Box("btn").Enter())
+    {
+        paper.ApplyStyleWithStates(paper.CurrentParent, "button");
+        paper.Box("lbl").Text(label);
+    }
+}
+```
+
+<Tip>
+  Style templates are resolved and merged at draw time each frame, so pseudo-state changes are reflected immediately without any explicit refresh. Combine with `ElementBuilder.Transition(...)` on a base style to get smooth animated state changes driven by the CSS-like transition system.
+</Tip>

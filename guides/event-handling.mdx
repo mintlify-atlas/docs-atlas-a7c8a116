@@ -1,0 +1,482 @@
+---
+title: "Event Handling: Clicks, Drags, Scroll, and Focus"
+sidebarTitle: "Events"
+description: "A complete reference for all ElementBuilder event callbacks in Prowl.Paper, including mouse, drag, scroll, hover, keyboard, and layout events."
+---
+
+Every interactive element in Prowl.Paper exposes a rich set of event callbacks that you attach to an `ElementBuilder` using method chaining. Events are dispatched by the framework at the end of each frame after hit-testing is complete, and they automatically bubble up the element hierarchy so that parent containers can react to activity that originates in their children. This page documents every available callback, its event-data type, and how to use it correctly.
+
+## Base event type: `ElementEvent`
+
+All pointer-related event classes inherit from `ElementEvent`, which carries the context data shared across mouse, drag, scroll, and hover events.
+
+```csharp
+public class ElementEvent
+{
+    // The element that originally triggered the event
+    public ElementHandle Source { get; }
+
+    // The layout rectangle of the current target (re-targeted during bubbling)
+    public Rect ElementRect { get; }
+
+    // Raw screen-space pointer position
+    public Float2 PointerPosition { get; }
+
+    // Pointer position relative to the element's top-left corner
+    public Float2 RelativePosition { get; }
+
+    // Pointer position normalized to [0, 1] within the element
+    public Float2 NormalizedPosition { get; }
+
+    // Call this to stop the event from bubbling to parent elements
+    public void StopPropagation();
+}
+```
+
+---
+
+## Mouse events
+
+Mouse events all use `ClickEvent`, which extends `ElementEvent` with a `Button` and a `Phase` discriminator. Paper evaluates press/hold/release as separate phases so you can attach multiple callbacks to the same element and handle each transition independently.
+
+```csharp
+public class ClickEvent : ElementEvent
+{
+    // Which mouse button triggered the event
+    public PaperMouseBtn Button { get; }
+
+    // Distinguishes Click / Press / Release / DoubleClick / RightClick / Held
+    public ClickPhase Phase { get; }
+}
+```
+
+### `OnClick` — press + release on the same element
+
+Fired once when the left mouse button is pressed **and** released over the same element without dragging.
+
+```csharp
+Paper.Box("ConfirmButton")
+    .Size(120, 40)
+    .BackgroundColor(Color.SteelBlue)
+    .Rounded(6)
+    .OnClick((ClickEvent e) =>
+    {
+        Console.WriteLine($"Clicked at {e.PointerPosition}");
+    });
+```
+
+### `OnPress` — mouse-button-down
+
+Fires the instant the left button goes down over the element, before release.
+
+```csharp
+Paper.Box("PressTarget")
+    .OnPress((ClickEvent e) =>
+    {
+        _pressStartTime = Time.Now;
+    });
+```
+
+### `OnHeld` — every frame while held
+
+Fires every frame for as long as the left button remains held over the element. Useful for continuous actions like charging an attack or scrolling a list manually.
+
+```csharp
+Paper.Box("HoldToCharge")
+    .OnHeld((ClickEvent e) =>
+    {
+        _chargeAmount += deltaTime;
+    });
+```
+
+### `OnRelease` — mouse-button-up
+
+Fires when the left button is released, regardless of whether the pointer is still over the element. Always paired with a prior `OnPress`.
+
+```csharp
+Paper.Box("DragHandle")
+    .OnRelease((ClickEvent e) =>
+    {
+        FinalizeDrop(e.PointerPosition);
+    });
+```
+
+### `OnDoubleClick` — rapid double-click
+
+Fires when two left-button presses occur within the double-click time window (250 ms by default) and the pointer has not moved significantly between them.
+
+```csharp
+Paper.Box("ListItem")
+    .OnDoubleClick((ClickEvent e) =>
+    {
+        OpenItem(_item);
+    });
+```
+
+### `OnRightClick` — right mouse button
+
+Fires when the right mouse button is pressed over the element. Uses `PaperMouseBtn.Right` as the `Button` value.
+
+```csharp
+Paper.Box("ContextTarget")
+    .OnRightClick((ClickEvent e) =>
+    {
+        ShowContextMenu(e.PointerPosition);
+    });
+```
+
+---
+
+## Drag events
+
+Dragging begins when the left button is held **and** the pointer moves at least 5 pixels from the initial press position. Drag events use `DragEvent`:
+
+```csharp
+public class DragEvent : ElementEvent
+{
+    // Where the drag started (screen space)
+    public Float2 StartPosition { get; }
+
+    // Movement since the last frame
+    public Float2 Delta { get; }
+
+    // Total movement since DragStart
+    public Float2 TotalDelta { get; }
+
+    // Start / Dragging / End
+    public DragPhase Phase { get; }
+}
+```
+
+### `OnDragStart` — drag threshold crossed
+
+```csharp
+Paper.Box("DraggablePanel")
+    .OnDragStart((DragEvent e) =>
+    {
+        _dragOffset = e.PointerPosition - _panelPosition;
+    });
+```
+
+### `OnDragging` — pointer moving while held
+
+Called every frame while the drag is active. Use `e.Delta` for frame-relative movement or `e.TotalDelta` for the total displacement from the start.
+
+```csharp
+Paper.Box("DraggablePanel")
+    .OnDragging((DragEvent e) =>
+    {
+        _panelPosition = e.PointerPosition - _dragOffset;
+    });
+```
+
+### `OnDragEnd` — button released after dragging
+
+```csharp
+Paper.Box("DraggablePanel")
+    .OnDragEnd((DragEvent e) =>
+    {
+        Console.WriteLine($"Dragged {e.TotalDelta} total.");
+        SnapToGrid(ref _panelPosition);
+    });
+```
+
+<CodeGroup>
+
+```csharp Complete drag example
+float panelX = 100, panelY = 100;
+Float2 dragOffset = Float2.Zero;
+
+Paper.Box("FloatingWindow")
+    .PositionType(PositionType.SelfDirected)
+    .Left(panelX).Top(panelY)
+    .Size(300, 200)
+    .BackgroundColor(Color.DarkSlateGray)
+    .Rounded(8)
+    .OnDragStart((DragEvent e) =>
+    {
+        dragOffset = e.PointerPosition - new Float2(panelX, panelY);
+    })
+    .OnDragging((DragEvent e) =>
+    {
+        var newPos = e.PointerPosition - dragOffset;
+        panelX = newPos.X;
+        panelY = newPos.Y;
+    });
+```
+
+</CodeGroup>
+
+---
+
+## Scroll event
+
+`OnScroll` fires when the mouse wheel moves over the element. The `ScrollEvent` adds a single `Delta` field (positive = scroll up, negative = scroll down).
+
+```csharp
+public class ScrollEvent : ElementEvent
+{
+    // Wheel delta; positive scrolls up, negative scrolls down
+    public float Delta { get; }
+}
+```
+
+```csharp
+float scrollOffset = 0f;
+
+Paper.Box("ScrollArea")
+    .OnScroll((ScrollEvent e) =>
+    {
+        scrollOffset = Math.Clamp(scrollOffset - e.Delta * 40f, 0f, maxScroll);
+    });
+```
+
+---
+
+## Hover events
+
+Hover events use the base `ElementEvent` type directly. They fire purely in response to pointer position — no button state is involved.
+
+### `OnHover` — pointer is over the element (every frame)
+
+Fires every frame while the pointer is anywhere inside the element's layout rect.
+
+```csharp
+Paper.Box("Tooltip Trigger")
+    .OnHover((ElementEvent e) =>
+    {
+        ShowTooltip("Helpful text", e.PointerPosition);
+    });
+```
+
+### `OnEnter` — pointer enters the element
+
+Fires once on the first frame the pointer crosses into the element's bounds.
+
+```csharp
+Paper.Box("SoundTarget")
+    .OnEnter((ElementEvent e) =>
+    {
+        AudioSystem.Play("hover.wav");
+    });
+```
+
+### `OnLeave` — pointer exits the element
+
+Fires once on the frame the pointer leaves the element's bounds.
+
+```csharp
+Paper.Box("SoundTarget")
+    .OnLeave((ElementEvent e) =>
+    {
+        HideTooltip();
+    });
+```
+
+---
+
+## Keyboard events
+
+Keyboard events are delivered only to the **focused** element. An element becomes focused when clicked (if it is focusable) or via Tab navigation.
+
+### `OnKeyPressed` — key pressed or auto-repeated
+
+Uses `KeyEvent`:
+
+```csharp
+public class KeyEvent
+{
+    public ElementHandle Source { get; }
+    public PaperKey Key { get; }
+
+    // True when this event is an auto-repeat, not a fresh key-down
+    public bool IsRepeat { get; }
+}
+```
+
+```csharp
+Paper.Box("Shortcut Handler")
+    .OnKeyPressed((KeyEvent e) =>
+    {
+        if (e.Key == PaperKey.S && paper.IsKeyDown(PaperKey.LeftControl))
+            Save();
+    });
+```
+
+### `OnTextInput` — printable character typed
+
+Fires for every character that reaches the text input queue. The character has already been filtered for control characters by the host's `AddInputCharacter` call.
+
+```csharp
+public class TextInputEvent
+{
+    public ElementHandle Source { get; }
+    public char Character { get; }
+}
+```
+
+```csharp
+Paper.Box("CharCapture")
+    .OnTextInput((TextInputEvent e) =>
+    {
+        _buffer += e.Character;
+    });
+```
+
+### `OnFocusChange` — element gains or loses focus
+
+```csharp
+public class FocusEvent
+{
+    public ElementHandle Source { get; }
+    public bool IsFocused { get; }  // true = gained, false = lost
+}
+```
+
+```csharp
+Paper.Box("SearchField")
+    .OnFocusChange((FocusEvent e) =>
+    {
+        _isSearchActive = e.IsFocused;
+    });
+```
+
+---
+
+## Layout callback: `OnPostLayout`
+
+`OnPostLayout` fires after the layout engine has computed the final dimensions and position of the element. Use it to perform measurements or to register custom draw calls that depend on the computed rect.
+
+```csharp
+Paper.Box("MeasuredBox")
+    .OnPostLayout((ElementHandle handle, Rect rect) =>
+    {
+        Console.WriteLine($"Final size: {rect.Size}");
+    });
+```
+
+---
+
+## Event bubbling
+
+When an event fires on an element, it **automatically bubbles up** through every ancestor in the hierarchy. This means an `OnHover` on a container fires whenever the pointer is over any of its children, not just the container itself.
+
+```csharp
+// OnHover on the Row fires whenever ANY child is hovered
+using (Paper.Row("CardRow")
+    .OnHover((ElementEvent e) => { ShowRowHighlight(); })
+    .Enter())
+{
+    Paper.Box("CardA").Size(100);
+    Paper.Box("CardB").Size(100);
+}
+```
+
+To stop an event from reaching ancestors, call `StopPropagation()` on the event object inside the callback:
+
+```csharp
+Paper.Box("Modal")
+    .OnClick((ClickEvent e) =>
+    {
+        HandleModalClick(e);
+        e.StopPropagation(); // prevents backdrop from also receiving the click
+    });
+```
+
+You can also block propagation at the element level for **all events** using `StopEventPropagation()` on the builder:
+
+```csharp
+Paper.Box("IsolatedPanel")
+    .StopEventPropagation(); // nothing from inside this panel reaches its parents
+```
+
+---
+
+## Element interaction flags
+
+### `IsNotInteractable()`
+
+Marks the element as a visual-only element. It is completely excluded from hit-testing: the pointer passes through it as though it were not there, and no events will ever fire on it.
+
+```csharp
+Paper.Box("DecorativeDivider")
+    .Height(1)
+    .BackgroundColor(Color.Gray)
+    .IsNotInteractable(); // purely visual
+```
+
+### `HookToParent()`
+
+Makes the element inherit its parent's interaction state. A hooked element is considered hovered, active, focused, and dragging whenever its parent is. All of its event callbacks are also invoked when the parent's corresponding events fire. This is useful for sub-elements like icons inside a button that should visually respond as if they were the button itself.
+
+```csharp
+using (Paper.Box("IconButton").OnClick(e => DoAction()).Enter())
+{
+    Paper.Box("Icon")
+        .HookToParent()  // participates in parent hover/active states
+        .Hovered
+            .TextColor(Color.White)
+            .End();
+}
+```
+
+---
+
+## Closure-free captured-value overloads
+
+Every event callback has a generic overload that accepts a captured value parameter. These overloads exist to avoid heap-allocating a lambda closure when you need to pass loop-local data into a callback — a common source of unnecessary GC pressure in immediate-mode code.
+
+<CodeGroup>
+
+```csharp Without captured value (closure allocation)
+for (int i = 0; i < items.Length; i++)
+{
+    int captured = i; // captured into a new closure each frame
+    Paper.Box($"Item_{i}")
+        .OnClick((ClickEvent e) => SelectItem(captured));
+}
+```
+
+```csharp With captured value (no closure)
+for (int i = 0; i < items.Length; i++)
+{
+    Paper.Box($"Item_{i}")
+        .OnClick(i, (int idx, ClickEvent e) => SelectItem(idx));
+}
+```
+
+</CodeGroup>
+
+The captured-value pattern is available for every callback: `OnClick<T>`, `OnPress<T>`, `OnHeld<T>`, `OnRelease<T>`, `OnDoubleClick<T>`, `OnRightClick<T>`, `OnDragStart<T>`, `OnDragging<T>`, `OnDragEnd<T>`, `OnScroll<T>`, `OnHover<T>`, `OnEnter<T>`, `OnLeave<T>`, `OnKeyPressed<T>`, `OnTextInput<T>`, `OnFocusChange<T>`, and `OnPostLayout<T>`.
+
+<Tip>
+  Prefer the generic overloads whenever the captured value is a value type (int, float, struct). For reference types that are already on the heap the benefit is smaller, but the pattern is still cleaner than manually constructing a closure object.
+</Tip>
+
+---
+
+## State-driven styling with event states
+
+You can combine event callbacks with state-driven style blocks to keep visual feedback and logic together on the same element chain.
+
+```csharp
+Paper.Box("HoverButton")
+    .Size(160, 44)
+    .BackgroundColor(Color.FromRgb(50, 80, 140))
+    .Rounded(8)
+    .Hovered
+        .BackgroundColor(Color.FromRgb(70, 110, 190))
+        .End()
+    .Active
+        .BackgroundColor(Color.FromRgb(30, 60, 110))
+        .End()
+    .Focused
+        .BorderColor(Color.Cyan)
+        .BorderWidth(2)
+        .End()
+    .OnClick((ClickEvent e) => HandleAction());
+```
+
+<Note>
+  Style state blocks (`.Hovered`, `.Active`, `.Focused`) are evaluated every frame based on Paper's internal interaction state — they do not require any event callbacks to be registered.
+</Note>

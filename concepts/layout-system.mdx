@@ -1,0 +1,289 @@
+---
+title: "Layout Engine: Rows, Columns, and Sizing"
+sidebarTitle: "Layout System"
+description: "A complete guide to Paper's Morphorm-based layout engine: LayoutType, PositionType, sizing, margins, padding, alignment recipes, and ContentSizer."
+---
+
+Paper's layout engine is based on [Morphorm](https://github.com/geom3trik/morphorm), a flex-like system built around rows and columns. Each element declares how large it wants to be and how it should be positioned, and the engine resolves the whole tree in a single pass from root to leaves. This page covers every knob you can turn.
+
+## LayoutType: Row vs. Column
+
+Every element has a `LayoutType` that controls how its **children** are arranged. `LayoutType.Row` places children left-to-right; `LayoutType.Column` stacks them top-to-bottom.
+
+```csharp
+// Explicit via Box
+paper.Box("HStack").LayoutType(LayoutType.Row);
+paper.Box("VStack").LayoutType(LayoutType.Column);
+
+// Convenience wrappers (do the same thing)
+paper.Row("HStack");
+paper.Column("VStack");
+```
+
+The root element is always a column. Elements default to `LayoutType.Column`.
+
+## PositionType: Normal Flow vs. Absolute
+
+`PositionType` controls whether an element participates in its parent's flow.
+
+| Value | CSS equivalent | Behaviour |
+|-------|----------------|-----------|
+| `ParentDirected` | `position: relative` | Default. The element takes up space in the parent's main axis and is placed by the layout engine. |
+| `SelfDirected` | `position: absolute` | The element is positioned relative to its parent using its own `Left`/`Top`/`Right`/`Bottom` values and does **not** push siblings. |
+
+```csharp
+// Normal flow
+paper.Box("Card").PositionType(PositionType.ParentDirected);
+
+// Absolute — overlays the parent without affecting sibling positions
+paper.Box("Badge")
+    .PositionType(PositionType.SelfDirected)
+    .Right(paper.Pixels(8))
+    .Top(paper.Pixels(8))
+    .Size(16)
+    .BackgroundColor(Color.Red)
+    .Rounded(8);
+```
+
+## Sizing: Width, Height, and Constraints
+
+Set an element's size with `Width(UnitValue)` and `Height(UnitValue)`, or both at once with `Size(UnitValue)`. Any `UnitValue` type is valid — pixels, percentage, stretch, or auto.
+
+```csharp
+paper.Box("Fixed").Size(paper.Pixels(200));           // 200 × 200 px
+paper.Box("HalfWidth").Width(paper.Percent(50));       // 50% of parent width
+paper.Box("Grow").Width(paper.Stretch());              // takes remaining width
+paper.Box("Wrap").Width(paper.Auto);                   // wraps to content
+```
+
+Clamp the resolved size with min/max constraints:
+
+```csharp
+paper.Box("Responsive")
+    .Width(paper.Percent(33))
+    .MinWidth(paper.Pixels(120))
+    .MaxWidth(paper.Pixels(400));
+```
+
+All six constraint properties exist on both axes: `MinWidth`, `MaxWidth`, `MinHeight`, `MaxHeight`, `Width`, `Height`.
+
+## Margin: Child-Side Spacing
+
+`Margin` (and its individual-side variants `Left`, `Right`, `Top`, `Bottom`) is set on a **child** element and controls the space around it on each side. The default value for every margin side is `UnitValue.Auto`, which tells the parent's `ChildLeft`/`ChildRight`/`ChildTop`/`ChildBottom` defaults to fill in.
+
+```csharp
+paper.Box("Item")
+    .Margin(paper.Pixels(8));           // 8px on all sides
+
+paper.Box("Item")
+    .Margin(paper.Pixels(4), paper.Pixels(8));  // 4px horizontal, 8px vertical
+
+// Individual sides
+paper.Box("Item")
+    .Left(paper.Pixels(16))
+    .Top(paper.Pixels(12));
+```
+
+Margins can also be `Stretch` values, which lets a margin compete with sibling sizes for leftover space — useful for pushing an element to one side.
+
+## Padding: Parent-Side Inset
+
+`Padding` is set on the **parent** and defines a guaranteed inset on each side of the parent's content area. Children are placed within the padded area; stretch competition only consumes the remaining inner space.
+
+```csharp
+paper.Column("Card")
+    .Padding(paper.Pixels(16));          // 16px inset on all sides
+
+paper.Column("Card")
+    .Padding(paper.Pixels(12), paper.Pixels(24));  // 12px horizontal, 24px vertical
+
+// Per-side
+paper.Column("Card")
+    .PaddingLeft(paper.Pixels(20))
+    .PaddingRight(paper.Pixels(20))
+    .PaddingTop(paper.Pixels(12))
+    .PaddingBottom(paper.Pixels(12));
+```
+
+## Child Alignment: `ChildLeft`, `ChildRight`, `ChildTop`, `ChildBottom`
+
+These properties are set on the **parent** and act as defaults for any child whose corresponding margin side is still `Auto`. By placing `Stretch` values into these slots you can replicate CSS `justify-content` alignment — the engine grows the stretch slots to consume leftover space.
+
+| Desired alignment | Recipe (set on parent) |
+|-------------------|------------------------|
+| Pack at start (default) | No extra settings needed |
+| Pack at end | `.ChildLeft()` (row) or `.ChildTop()` (column) |
+| Center | `.ChildLeft().ChildRight()` (row) or `.ChildTop().ChildBottom()` (column) |
+| Space between | `.ColBetween()` (row) or `.RowBetween()` (column) |
+| Space around | `.ChildLeft().ChildRight().ColBetween()` |
+
+The no-argument overloads default to `UnitValue.StretchOne`:
+
+```csharp
+// Center children horizontally inside a Row
+paper.Row("Centered")
+    .ChildLeft()    // Stretch(1) before first child
+    .ChildRight();  // Stretch(1) after last child
+
+// Center children vertically inside a Column
+paper.Column("Centered")
+    .ChildTop()
+    .ChildBottom();
+```
+
+## Gap Between Children: `RowBetween` and `ColBetween`
+
+`ColBetween` inserts default spacing between adjacent children in a **Row** container (between columns). `RowBetween` does the same for a **Column** container (between rows). The gap is only applied when both adjacent margin sides are still `Auto`.
+
+```csharp
+// Fixed 12px gap between every child in a row
+paper.Row("Toolbar").ColBetween(paper.Pixels(12));
+
+// Space-between: stretch gaps push children to the edges
+paper.Row("SpaceBetween").ColBetween();  // defaults to Stretch(1)
+```
+
+## Aspect Ratio
+
+`AspectRatio(float ratio)` locks the element's width-to-height ratio. The engine uses the more constrained axis to derive the other:
+
+```csharp
+// A 16:9 video thumbnail that is always 300px wide
+paper.Box("Thumbnail")
+    .Width(paper.Pixels(300))
+    .AspectRatio(16f / 9f);
+
+// A square that fills remaining width
+paper.Box("Square")
+    .Width(paper.Stretch())
+    .AspectRatio(1f);
+```
+
+## ContentSizer for Custom Auto-Sizing
+
+When an element's size is `Auto`, Paper calls its `ContentSizer` function — if one is set — to measure the preferred size. The function receives optional maximum constraints and returns `(width, height)?` (return `null` if the element cannot be measured at those constraints).
+
+```csharp
+// Size the element to fit its text content plus padding
+paper.Box("Label")
+    .Width(paper.Auto)
+    .Height(paper.Auto)
+    .ContentSizer((maxWidth, maxHeight) =>
+    {
+        var size = paper.MeasureText("Hello World", 16f, myFont);
+        return (size.X + 16f, size.Y + 8f);   // add padding
+    });
+
+// Aspect-ratio sizing driven by available width
+paper.Box("Video")
+    .Width(paper.Stretch())
+    .Height(paper.Auto)
+    .ContentSizer((maxWidth, maxHeight) =>
+    {
+        const float aspect = 16f / 9f;
+        float w = maxWidth ?? 320f;
+        return (w, w / aspect);
+    });
+```
+
+For a fixed content size you can use the two-argument shorthand:
+
+```csharp
+paper.Box("Icon")
+    .Width(paper.Auto)
+    .Height(paper.Auto)
+    .ContentSizer(24f, 24f);
+```
+
+## Clamp to Screen
+
+`ClampToScreen()` ensures an element never overflows the viewport bounds after layout. It is applied as a post-layout position correction, so it works with both `ParentDirected` and `SelfDirected` elements. Children move with the parent automatically.
+
+```csharp
+paper.Box("Tooltip")
+    .PositionType(PositionType.SelfDirected)
+    .Left(paper.Pixels(mouseX))
+    .Top(paper.Pixels(mouseY))
+    .Size(160, 60)
+    .ClampToScreen();
+```
+
+## Layout Recipes
+
+The examples below combine the primitives above into common real-world patterns.
+
+<CodeGroup>
+```csharp Center a child
+// Using ChildLeft/ChildRight to center horizontally AND vertically
+using (paper.Box("Container")
+    .Size(paper.Stretch())
+    .ChildLeft()
+    .ChildRight()
+    .ChildTop()
+    .ChildBottom()
+    .Enter())
+{
+    paper.Box("Centered")
+        .Size(paper.Pixels(100));
+}
+```
+
+```csharp Space between (row)
+// Three buttons spread across the full width of the row
+using (paper.Row("ButtonBar")
+    .Width(paper.Stretch())
+    .Height(48)
+    .ColBetween()          // stretch gap between siblings
+    .ChildLeft()           // stretch gap before first child
+    .ChildRight()          // stretch gap after last child
+    .Enter())
+{
+    paper.Box("Back").Width(80).BackgroundColor(Color.Gray);
+    paper.Box("Home").Width(80).BackgroundColor(Color.Gray);
+    paper.Box("Next").Width(80).BackgroundColor(Color.Gray);
+}
+```
+
+```csharp Sidebar layout
+using (paper.Row("App")
+    .Size(paper.Stretch())
+    .Enter())
+{
+    // Fixed-width sidebar
+    paper.Box("Sidebar")
+        .Width(paper.Pixels(240))
+        .Height(paper.Stretch())
+        .BackgroundColor(Color.DarkGray);
+
+    // Main content fills remaining space
+    paper.Box("Main")
+        .Width(paper.Stretch())
+        .Height(paper.Stretch())
+        .BackgroundColor(Color.White);
+}
+```
+
+```csharp Card with internal padding
+using (paper.Column("Card")
+    .Width(paper.Pixels(320))
+    .Height(paper.Auto)
+    .Padding(paper.Pixels(16))
+    .BackgroundColor(Color.White)
+    .Rounded(12)
+    .ColBetween(paper.Pixels(8))
+    .Enter())
+{
+    paper.Box("Title")
+        .Height(paper.Auto)
+        .Text("Card Title", boldFont);
+
+    paper.Box("Body")
+        .Height(paper.Auto)
+        .Text("Body text goes here.", bodyFont);
+}
+```
+</CodeGroup>
+
+<Info>
+Layout is resolved once per frame inside `EndFrame`. All element declarations made between `BeginFrame` and `EndFrame` feed into a single layout pass — there is no incremental update mechanism.
+</Info>

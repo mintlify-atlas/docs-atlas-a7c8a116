@@ -1,0 +1,212 @@
+---
+title: "UnitValue: Pixels, Percent, Stretch, and Auto"
+sidebarTitle: "Unit Values"
+description: "Master Paper's UnitValue system: the four unit types, composite expressions, weighted Stretch distribution, arithmetic operators, and lerping for animation."
+---
+
+Every dimension in Paper — width, height, margin, padding, position — is expressed as a `UnitValue`. Instead of overloaded method signatures for different unit types, `UnitValue` is a single composite value that can represent pixels, a percentage of the parent, a share of leftover space, or automatic content sizing — and any combination of those at once.
+
+## The Four Unit Types
+
+`UnitValue` stores four independent components internally: `Px`, `Pct`, `Grow`, and `AutoFactor`. Each factory method sets one of them:
+
+| Type | Factory | Shorthand | Internal field set |
+|------|---------|-----------|-------------------|
+| **Pixels** | `UnitValue.Pixels(200f)` | `paper.Pixels(200f)` | `Px = 200` |
+| **Percentage** | `UnitValue.Percentage(50f)` | `paper.Percent(50f)` | `Pct = 50` |
+| **Stretch** | `UnitValue.Stretch(1f)` | `paper.Stretch(1f)` | `Grow = 1` |
+| **Auto** | `UnitValue.Auto` | `paper.Auto` | `AutoFactor = 1` |
+
+### Pixels
+
+A fixed pixel length. Unaffected by the parent's size.
+
+```csharp
+paper.Box("Button").Width(paper.Pixels(120)).Height(paper.Pixels(40));
+
+// float and int implicitly convert to UnitValue.Pixels
+paper.Box("Button").Width(120).Height(40);
+```
+
+### Percentage
+
+A fraction of the parent container's corresponding dimension, with an optional pixel offset baked in.
+
+```csharp
+// 50% of parent width
+paper.Box("HalfWidth").Width(paper.Percent(50f));
+
+// 100% of parent width minus 32px (accounts for 16px margin each side)
+paper.Box("FullMinusPadding").Width(paper.Percent(100f, -32f));
+```
+
+The `offset` parameter is the second argument to `UnitValue.Percentage(float value, float offset)` and maps directly to the `Px` component.
+
+### Stretch
+
+Stretch values claim a **share of the leftover space** in the parent's main axis after all fixed and percentage children have been measured. The share is weighted by the `Grow` factor.
+
+```csharp
+// One child that takes all remaining space
+paper.Box("Filler").Width(paper.Stretch());
+
+// Two children sharing remaining space 2:1
+paper.Box("Wide").Width(paper.Stretch(2f));
+paper.Box("Narrow").Width(paper.Stretch(1f));
+```
+
+`UnitValue.StretchOne` is a pre-allocated constant equal to `Stretch(1f)` — used internally by the no-argument `ChildLeft()`, `ChildRight()`, etc. overloads.
+
+### Auto
+
+Auto sizes the element to its content. For containers, that means wrapping tightly around children. For leaf elements with a `ContentSizer`, it calls the sizer function. For text elements, it measures the rendered text.
+
+```csharp
+// A label that wraps to its text content
+paper.Box("Label")
+    .Width(paper.Auto)
+    .Height(paper.Auto)
+    .Text("Hello!", myFont);
+```
+
+<Info>
+`paper.Auto` is a property (not a method) because it takes no arguments. The other three are methods: `paper.Pixels(v)`, `paper.Percent(v)`, `paper.Stretch(f)`.
+</Info>
+
+## Composite Values
+
+Because `UnitValue` stores all four components simultaneously, you can combine units using standard arithmetic operators. This falls out naturally from the struct design — addition merges components independently.
+
+```csharp
+// "All remaining space plus a fixed 10px floor"
+UnitValue stretchWithFloor = UnitValue.Stretch(1f) + UnitValue.Pixels(10f);
+// Internally: { Px = 10, Grow = 1 }
+
+// "50% of parent minus 8px" — useful for symmetric insets
+UnitValue halfMinusGap = UnitValue.Percentage(50f) + UnitValue.Pixels(-8f);
+// Internally: { Px = -8, Pct = 50 }
+
+// Using shorthand helpers
+var value = paper.Stretch() + paper.Pixels(10f);
+```
+
+The layout engine resolves a composite value as:
+
+```
+resolved = Px + (Pct / 100) * parentSize + Grow * leftoverShare + AutoFactor * contentSize
+```
+
+Each component contributes independently, so the combinations are composable without edge cases.
+
+## Weighted Stretch Distribution
+
+When multiple siblings all have `Stretch` widths (or heights), the engine divides the leftover space proportionally by their `Grow` factors.
+
+```csharp
+using (paper.Row("Container").Enter())
+{
+    // leftover = 900px, total Grow = 1 + 2 + 1 = 4
+    // A gets 900 * (1/4) = 225px
+    // B gets 900 * (2/4) = 450px
+    // C gets 900 * (1/4) = 225px
+    paper.Box("A").Width(paper.Stretch(1f));
+    paper.Box("B").Width(paper.Stretch(2f));
+    paper.Box("C").Width(paper.Stretch(1f));
+}
+```
+
+`paper.Stretch()` with no argument defaults to a factor of `1f`. `UnitValue.StretchOne` is a pre-allocated singleton for the same value, used by alignment helpers to avoid allocations.
+
+<Note>
+Stretch factors are relative within the pool of stretch siblings. `Stretch(2)` vs. `Stretch(1)` gives a 2:1 split. `Stretch(4)` vs. `Stretch(2)` gives the same 2:1 split — only the ratio matters.
+</Note>
+
+## Arithmetic Operators
+
+`UnitValue` supports the full set of arithmetic operators. Each operates component-wise across `Px`, `Pct`, `Grow`, and `AutoFactor`:
+
+```csharp
+var a = UnitValue.Pixels(100f);
+var b = UnitValue.Percentage(50f);
+
+// Addition — combine units
+var combined = a + b;          // { Px=100, Pct=50 }
+
+// Subtraction — useful for offsets
+var offset = b - UnitValue.Pixels(16f);   // { Px=-16, Pct=50 }
+
+// Scalar multiplication — scale all components
+var doubled = a * 2f;          // { Px=200 }
+var halved  = b / 2f;          // { Pct=25 }
+
+// Negation
+var negative = -a;             // { Px=-100 }
+```
+
+Implicit conversions from `float` and `int` produce `UnitValue.Pixels(value)`, so you can pass raw numbers anywhere a `UnitValue` is expected:
+
+```csharp
+paper.Box("Card").Width(320).Height(200).Padding(16);
+```
+
+## Lerping UnitValues for Animation
+
+`UnitValue.Lerp(a, b, t)` interpolates each component independently. This integrates naturally with Paper's built-in transition system, but you can also call it manually when driving animations from your own timer:
+
+```csharp
+float t = Maths.Clamp(animationProgress, 0f, 1f);
+
+// Interpolate from 0px to 300px
+var width = UnitValue.Lerp(UnitValue.Pixels(0f), UnitValue.Pixels(300f), t);
+
+// Interpolate from 0% to 100% (slide-in effect)
+var slideIn = UnitValue.Lerp(UnitValue.Percentage(100f), UnitValue.Percentage(0f), t);
+
+// Interpolate from Pixels(0) to Auto — gradually reveal content size
+var reveal = UnitValue.Lerp(UnitValue.Pixels(0f), UnitValue.Auto, t);
+// At t=0.5: { AutoFactor=0.5 } — 50% of content size
+
+paper.Box("Panel").Width(paper.Pixels(200)).Height(reveal);
+```
+
+Because lerp operates per-component, interpolating between different unit types produces intermediate composite values — for example, lerping from `Pixels(0)` to `Auto` at `t = 0.5` gives `{ AutoFactor = 0.5 }`, meaning "half the content size".
+
+## Quick Reference
+
+<CardGroup cols={2}>
+  <Card title="Pixels" icon="ruler">
+    Fixed size in logical pixels. Unaffected by the parent.
+
+    ```csharp
+    paper.Pixels(120f)
+    UnitValue.Pixels(120f)
+    // or simply: 120
+    ```
+  </Card>
+  <Card title="Percentage" icon="percent">
+    Fraction of the parent's dimension, plus an optional pixel offset.
+
+    ```csharp
+    paper.Percent(50f)
+    paper.Percent(100f, -16f)  // 100% - 16px
+    UnitValue.Percentage(50f)
+    ```
+  </Card>
+  <Card title="Stretch" icon="arrows-left-right">
+    Claims a weighted share of leftover space after fixed children are measured.
+
+    ```csharp
+    paper.Stretch()       // factor = 1
+    paper.Stretch(2f)     // twice the share of Stretch(1)
+    UnitValue.StretchOne  // pre-allocated Stretch(1)
+    ```
+  </Card>
+  <Card title="Auto" icon="wand-magic-sparkles">
+    Sizes to content — children, `ContentSizer`, or measured text.
+
+    ```csharp
+    paper.Auto
+    UnitValue.Auto
+    ```
+  </Card>
+</CardGroup>

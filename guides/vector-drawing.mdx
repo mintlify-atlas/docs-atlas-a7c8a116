@@ -1,0 +1,313 @@
+---
+title: "Vector Drawing and Custom Canvas Rendering"
+sidebarTitle: "Vector Drawing"
+description: "Use Paper's Canvas API to draw arbitrary vector shapes, gradients, images, and custom shaders inside any element's Draw or DrawForeground callback."
+---
+
+Every Paper element has two optional drawing hooks that give you direct access to the underlying `Prowl.Quill.Canvas` at render time. Inside these callbacks you can draw anything the canvas supports — paths, filled shapes, gradients, images, and even custom shaders — without leaving the immediate-mode flow. The canvas is hardware-accelerated, anti-aliased, and scissor-aware, so your custom artwork clips and layers exactly like styled elements do.
+
+## Draw Callbacks
+
+### paper.Draw — Render Before Children
+
+`paper.Draw()` registers a callback that fires before the element's children are rendered. Use it for custom backgrounds, data visualisations, or decorations that should sit beneath child content.
+
+```csharp
+// Attach to the current parent element
+paper.Draw((canvas, rect) =>
+{
+    // rect is the element's layout rectangle in logical coordinates
+    canvas.SetFillColor(Color.CornflowerBlue);
+    canvas.CircleFilled(rect.Center.X, rect.Center.Y, rect.Size.X * 0.4f, 32);
+});
+```
+
+You can also target a specific `ElementHandle` directly:
+
+```csharp
+var handle = paper.Box("Chart").Width(300).Height(200)._handle;
+paper.Draw(ref handle, (canvas, rect) =>
+{
+    DrawPieChart(canvas, rect, data);
+});
+```
+
+### paper.DrawForeground — Render After Children
+
+`paper.DrawForeground()` fires after all children have been rendered. Use it for overlays, highlight borders, tooltips, or any decoration that must appear on top of child content.
+
+```csharp
+paper.DrawForeground((canvas, rect) =>
+{
+    // Draw a selection ring over all children
+    canvas.BeginPath();
+    canvas.RoundedRect(rect.Min.X + 1, rect.Min.Y + 1,
+                       rect.Size.X - 2, rect.Size.Y - 2,
+                       6, 6, 6, 6);
+    canvas.SetStrokeColor(Color.DodgerBlue);
+    canvas.SetStrokeWidth(2);
+    canvas.Stroke();
+});
+```
+
+<Note>
+The canvas state (transform, scissor, fill/stroke settings) is **not** automatically saved and restored around custom draw callbacks. Call `canvas.SaveState()` at the start and `canvas.RestoreState()` at the end if your callback changes state that must not leak into sibling elements.
+</Note>
+
+---
+
+## Canvas Drawing Primitives
+
+The `Canvas` object passed to your callbacks exposes the full Prowl.Quill drawing API.
+
+### Path Building
+
+All vector shapes are defined as paths. Begin a path, add contours, then either fill or stroke.
+
+```csharp
+canvas.BeginPath();
+canvas.MoveTo(x, y);
+canvas.LineTo(x2, y2);
+canvas.CurveTo(cx1, cy1, cx2, cy2, ex, ey);   // cubic Bézier
+canvas.ArcTo(x1, y1, x2, y2, radius);
+canvas.ClosePath();
+
+canvas.SetFillColor(Color.Tomato);
+canvas.Fill();
+
+// or
+
+canvas.SetStrokeColor(Color.White);
+canvas.SetStrokeWidth(2);
+canvas.Stroke();
+```
+
+### Convenience Shape Methods
+
+For common shapes, skip the path API and use the direct helpers:
+
+```csharp
+canvas.RectFilled(x, y, width, height, color);
+canvas.Rect(x, y, width, height);                         // outline only
+canvas.RoundedRectFilled(x, y, w, h, tlR, trR, brR, blR, color);
+canvas.RoundedRect(x, y, w, h, tlR, trR, brR, blR);
+canvas.CircleFilled(cx, cy, radius, segments, color);
+```
+
+### Fill and Stroke Configuration
+
+```csharp
+canvas.SetFillColor(Color.SkyBlue);
+canvas.SetStrokeColor(Color.White);
+canvas.SetStrokeWidth(1.5f);
+```
+
+---
+
+## Gradient Brushes
+
+Before calling `Fill()`, set a gradient brush to replace the flat fill colour. Gradients use element-relative coordinates (0–1 range maps to the element's width/height) when created through `Gradient` factory methods, but you pass raw canvas coordinates when calling the canvas brush setters directly.
+
+<CardGroup cols={3}>
+<Card title="Linear" icon="arrow-right">
+Blends from one point to another along a straight axis.
+</Card>
+<Card title="Radial" icon="circle-dot">
+Radiates from an inner circle to an outer circle around a centre point.
+</Card>
+<Card title="Box" icon="square">
+Like a radial gradient but shaped to a rounded rectangle for soft glow effects.
+</Card>
+</CardGroup>
+
+### Canvas Brush Methods
+
+```csharp
+// Linear gradient between two canvas-space points
+canvas.SetLinearBrush(x1, y1, x2, y2, startColor, endColor);
+
+// Radial gradient centred at (cx, cy)
+canvas.SetRadialBrush(cx, cy, innerRadius, outerRadius, innerColor, outerColor);
+
+// Box (rounded-rect) gradient
+canvas.SetBoxBrush(cx, cy, width, height, cornerRadius, feather, innerColor, outerColor);
+
+// Disable the gradient brush
+canvas.ClearBrush();
+```
+
+### Gradient Factory Methods (Style API)
+
+You can also attach gradient backgrounds to elements via the `ElementBuilder` style API, which uses normalised (0–1) coordinates relative to the element's bounding box.
+
+```csharp
+paper.Box("GradientPanel")
+    .Width(300).Height(120)
+    .BackgroundLinearGradient(0, 0, 1, 0,      // left → right
+        Color.MidnightBlue, Color.DeepSkyBlue)
+    .Rounded(8);
+```
+
+```csharp
+// Gradient struct factory methods
+Gradient linear = Gradient.Linear(x1, y1, x2, y2, color1, color2);
+Gradient radial = Gradient.Radial(centerX, centerY, innerR, outerR, inner, outer);
+Gradient box    = Gradient.Box(cx, cy, width, height, radius, feather, inner, outer);
+```
+
+---
+
+## Drawing Images
+
+Render any renderer-created texture object into a rectangle:
+
+```csharp
+canvas.DrawImage(texture, x, y, width, height);
+
+// With an optional tint colour
+canvas.DrawImage(texture, x, y, width, height, tintColor);
+```
+
+### ImageScaleMode (Element API)
+
+When displaying images through the `.Image()` element builder method, choose a scale mode:
+
+| Mode | Behaviour |
+|---|---|
+| `ImageScaleMode.Stretch` | Fills the entire element rect, ignoring aspect ratio |
+| `ImageScaleMode.Fit` | Scales uniformly to fit inside the rect; may leave empty space |
+| `ImageScaleMode.Fill` | Scales uniformly to cover the rect; may crop edges |
+
+```csharp
+paper.Box("Photo")
+    .Width(200).Height(200)
+    .Image(myTexture, scaleMode: ImageScaleMode.Fill);
+```
+
+---
+
+## Box Shadows
+
+Attach a drop shadow to any element with `.BoxShadow()`. The shadow is rendered as a blurred box before the element's background, so it appears to lift the element off the canvas.
+
+```csharp
+paper.Box("Card")
+    .Width(300).Height(180)
+    .BackgroundColor(Color.White)
+    .Rounded(12)
+    .BoxShadow(
+        offsetX: 0,
+        offsetY: 4,
+        blur:    16,
+        spread:  0,
+        color:   Color.FromArgb(80, 0, 0, 0)
+    );
+```
+
+```csharp
+// Equivalent using the BoxShadow struct directly
+var shadow = new BoxShadow(offsetX: 0, offsetY: 4, blur: 16, spread: 0,
+                           color: Color.FromArgb(80, 0, 0, 0));
+element.BoxShadow(shadow);
+```
+
+---
+
+## State Management and Scissoring
+
+Save and restore canvas state across complex drawing operations:
+
+```csharp
+canvas.SaveState();
+
+canvas.IntersectScissor(rect.Min.X, rect.Min.Y, rect.Size.X, rect.Size.Y);
+
+// ... draw clipped content ...
+
+canvas.RestoreState(); // scissors, transforms, and brush state all restored
+```
+
+### Backdrop Blur
+
+For frosted-glass effects, set a backdrop blur radius before drawing. The renderer captures and blurs whatever has been rendered behind the shape, then composites your fill on top as a tint.
+
+```csharp
+canvas.SetBackdropBlur(12f);
+canvas.RoundedRectFilled(rect.Min.X, rect.Min.Y, rect.Size.X, rect.Size.Y,
+    8, 8, 8, 8, Color.FromArgb(80, 255, 255, 255));
+canvas.ClearBackdropBlur();
+```
+
+---
+
+## Custom Shaders
+
+Replace the default fragment shader for a single element using `.CustomShader()` on the `ElementBuilder`. The element's layout rectangle is drawn with `RectFilled` using the custom shader, and you can push uniform values into it each frame via a `ShaderUniforms` callback.
+
+```csharp
+paper.Box("ShaderPanel")
+    .Width(400).Height(300)
+    .CustomShader(myShaderProgram, uniforms =>
+    {
+        uniforms.Set("uTime",      paper.Time);
+        uniforms.Set("uResolution", new Float2(400, 300));
+    });
+```
+
+<Warning>
+The `shader` parameter type is `object` — pass the backend-specific handle directly (e.g. an OpenGL program `int` boxed as `object`, or a Raylib `Shader` struct). The renderer you implemented receives it back in `DrawCall.Shader` and can cast it safely.
+</Warning>
+
+---
+
+## Practical Example: Custom Progress Ring
+
+The following example draws a segmented progress ring inside a `Draw` callback, compositing it behind a centred percentage label that is a regular Paper text element.
+
+```csharp
+float progress = 0.72f; // 0.0 to 1.0
+
+using (paper.Box("ProgressRing")
+    .Width(120).Height(120)
+    .Enter())
+{
+    // Draw the ring arc behind the label
+    paper.Draw((canvas, rect) =>
+    {
+        canvas.SaveState();
+
+        float cx     = rect.Min.X + rect.Size.X * 0.5f;
+        float cy     = rect.Min.Y + rect.Size.Y * 0.5f;
+        float radius = rect.Size.X * 0.45f;
+        float stroke = 8f;
+
+        // Background track
+        canvas.BeginPath();
+        canvas.Arc(cx, cy, radius, 0, MathF.PI * 2, Winding.ClockWise);
+        canvas.SetStrokeColor(Color.FromArgb(60, 255, 255, 255));
+        canvas.SetStrokeWidth(stroke);
+        canvas.Stroke();
+
+        // Filled arc — from top (-π/2) sweeping clockwise by (progress * 2π)
+        float startAngle = -MathF.PI / 2f;
+        float endAngle   = startAngle + progress * MathF.PI * 2f;
+        canvas.BeginPath();
+        canvas.Arc(cx, cy, radius, startAngle, endAngle, Winding.ClockWise);
+        canvas.SetLinearBrush(cx, cy - radius, cx, cy + radius,
+            Color.DeepSkyBlue, Color.MediumPurple);
+        canvas.SetStrokeWidth(stroke);
+        canvas.Stroke();
+        canvas.ClearBrush();
+
+        canvas.RestoreState();
+    });
+
+    // Centred percentage label on top of the ring
+    paper.Box("Label")
+        .Size(paper.Stretch())
+        .Text($"{(int)(progress * 100)}%", uiFont)
+        .FontSize(22)
+        .TextColor(Color.White)
+        .Alignment(TextAlignment.MiddleCenter);
+}
+```

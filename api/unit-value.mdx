@@ -1,0 +1,223 @@
+---
+title: "UnitValue Reference: Pixels, Percentage, Stretch, Auto"
+sidebarTitle: "UnitValue"
+description: "Complete reference for the UnitValue struct — Prowl.Paper's composite layout unit supporting pixels, percentages, stretch factors, and auto content sizing."
+---
+
+`UnitValue` is the fundamental measurement type used throughout Prowl.Paper's layout engine. Rather than forcing a single unit mode, every `UnitValue` is a composite of four independent components — `Px`, `Pct`, `Grow`, and `AutoFactor` — evaluated together as `Px + (Pct/100 × parent) + Grow × remainderShare + AutoFactor × contentSize`. This design lets you express natural combinations such as "50% of the parent minus 8 pixels" (`Percentage(50, -8)`) or "fill remaining space with a 10px floor" (`Stretch(1) + Pixels(10)`) without needing separate union types.
+
+## Unit types at a glance
+
+| Type | Factory | Components set | Resolves using |
+|---|---|---|---|
+| Pixels | `UnitValue.Pixels(v)` | `Px = v` | Fixed pixel value |
+| Percentage | `UnitValue.Percentage(v, offset)` | `Pct = v`, `Px = offset` | Fraction of parent size |
+| Stretch | `UnitValue.Stretch(f)` | `Grow = f` | Share of leftover space |
+| Auto | `UnitValue.Auto` | `AutoFactor = 1` | Element's content size |
+
+## Struct fields
+
+<ParamField path="Px" type="float">
+  Raw pixel offset. Contributes a fixed amount to the resolved size regardless of parent or content dimensions.
+</ParamField>
+
+<ParamField path="Pct" type="float">
+  Percentage of the parent container's corresponding dimension, expressed in the range 0–100. A value of `50` means 50% of the parent.
+</ParamField>
+
+<ParamField path="Grow" type="float">
+  Stretch (flex-grow) factor. After all fixed and percentage sizes are subtracted from the available space, the remainder is distributed among siblings weighted by their `Grow` values.
+</ParamField>
+
+<ParamField path="AutoFactor" type="float">
+  Content-size multiplier. `1.0` means "use the full intrinsic content size"; `0.0` means content is ignored. The sentinel value `UnitValue.Auto` sets this to `1` with all other components at `0`.
+</ParamField>
+
+## Constructor
+
+```csharp
+public UnitValue(float px, float pct = 0f, float grow = 0f, float autoFactor = 0f)
+```
+
+Directly constructs a composite unit value. Prefer the factory methods below for common cases.
+
+## Factory methods
+
+### `UnitValue.Pixels(float value)`
+
+Creates a pure pixel value with no percentage, stretch, or auto component.
+
+```csharp
+UnitValue width = UnitValue.Pixels(120f); // Always 120 pixels wide
+```
+
+### `UnitValue.Percentage(float value, float offset = 0f)`
+
+Creates a percentage of the parent, with an optional pixel offset baked in. The offset is stored in `Px` so arithmetic remains clean.
+
+```csharp
+UnitValue half      = UnitValue.Percentage(50f);       // 50% of parent
+UnitValue halfMinus = UnitValue.Percentage(50f, -8f);  // 50% − 8px
+```
+
+### `UnitValue.Stretch(float factor = 1f)`
+
+Creates a stretch unit that claims a proportional share of the remaining space after fixed/percentage elements are placed. Siblings with higher factors get proportionally more space.
+
+```csharp
+UnitValue fill   = UnitValue.Stretch();      // factor = 1 (default)
+UnitValue double = UnitValue.Stretch(2f);    // claims twice as much as Stretch(1)
+```
+
+### Pre-allocated constants
+
+| Constant | Equivalent | Notes |
+|---|---|---|
+| `UnitValue.Auto` | `new UnitValue(0,0,0,1)` | Sizes to content |
+| `UnitValue.ZeroPixels` | `new UnitValue(0,0,0,0)` | Explicit zero |
+| `UnitValue.StretchOne` | `new UnitValue(0,0,1,0)` | `Stretch(1)` without allocation |
+
+## Predicate properties
+
+All predicates are read-only and examine the raw component values:
+
+| Property | Returns `true` when… |
+|---|---|
+| `HasGrow` | `Grow > 0` — participates in stretch distribution |
+| `HasAuto` | `AutoFactor > 0` — has a content-size contribution |
+| `IsFixed` | `Grow == 0 && AutoFactor == 0` — resolves without stretch or content measurement |
+| `IsAuto` | Exactly the `Auto` sentinel (`Px=0, Pct=0, Grow=0, AutoFactor=1`) |
+| `IsStretch` | Purely a stretch factor — no Px, Pct, or AutoFactor |
+| `IsPixels` | Purely a pixel value — no Pct, Grow, or AutoFactor |
+| `IsPercentage` | Carries a Pct component with no Grow or AutoFactor |
+
+```csharp
+UnitValue.Pixels(40).IsFixed      // true
+UnitValue.Stretch().HasGrow       // true
+UnitValue.Auto.IsAuto             // true
+UnitValue.Percentage(50).IsFixed  // true — percentages are fixed relative to parent
+```
+
+<Note>
+  `IsFixed` returns `true` for percentage values because they resolve to a definite length once the parent size is known, without participating in stretch competition or content measurement.
+</Note>
+
+## Arithmetic operators
+
+`UnitValue` arithmetic combines components element-wise, making compound values natural to express:
+
+```csharp
+// "Fill remaining space but never narrower than 10px"
+UnitValue minFloor = UnitValue.Stretch(1) + UnitValue.Pixels(10);
+
+// "50% of parent minus 8px padding"
+UnitValue padded = UnitValue.Percentage(50) + UnitValue.Pixels(-8);
+
+// Scale a value
+UnitValue doubled = UnitValue.Pixels(100) * 2f;
+```
+
+| Operator | Description |
+|---|---|
+| `a + b` | Component-wise addition |
+| `a - b` | Component-wise subtraction |
+| `-a` | Negate all components |
+| `a * scalar` | Scale all components by a float |
+| `scalar * a` | Commutative scalar multiply |
+| `a / scalar` | Divide all components by a float |
+
+## Interpolation
+
+### `UnitValue.Lerp(UnitValue a, UnitValue b, float t)`
+
+Linearly interpolates each component independently. `t` is clamped to `[0, 1]`. Because components are interpolated separately, mixing unit types produces intermediate values that are meaningful — for example, `Lerp(Pixels(0), Auto, 0.5f)` yields `{AutoFactor: 0.5}`, which contributes half the content size.
+
+```csharp
+UnitValue start  = UnitValue.Pixels(0);
+UnitValue end    = UnitValue.Pixels(200);
+UnitValue midway = UnitValue.Lerp(start, end, 0.5f); // Pixels(100)
+
+// Used automatically by the animation system during Transition()
+```
+
+<Tip>
+  The style transition engine calls `UnitValue.Lerp` internally whenever a layout property like `Width` or `Height` is animated with `.Transition(GuiProp.Width, duration)`.
+</Tip>
+
+## Implicit conversions
+
+Both `int` and `float` implicitly convert to `UnitValue` as pixel values, so you can pass numeric literals directly to any layout API:
+
+```csharp
+element.Width(200);     // Same as Width(UnitValue.Pixels(200))
+element.Height(48f);    // Same as Height(UnitValue.Pixels(48f))
+```
+
+## Comparison and equality
+
+`UnitValue` implements `IEquatable<UnitValue>`. Two values are equal when all four components are identical:
+
+```csharp
+bool eq = UnitValue.Pixels(10) == UnitValue.Pixels(10); // true
+bool ne = UnitValue.Pixels(10) != UnitValue.Auto;        // true
+```
+
+The `==` / `!=` operators delegate to `Equals(UnitValue other)`, which compares `Px`, `Pct`, `Grow`, and `AutoFactor` as floats.
+
+## `ToString()`
+
+Returns a human-readable string listing only the non-zero components, joined with ` + `:
+
+```csharp
+UnitValue.Pixels(40).ToString()                           // "40px"
+UnitValue.Percentage(50, -8).ToString()                   // "-8px + 50%"
+UnitValue.Stretch(2).ToString()                           // "2grow"
+UnitValue.Auto.ToString()                                 // "1auto"
+(UnitValue.Stretch(1) + UnitValue.Pixels(10)).ToString()  // "10px + 1grow"
+new UnitValue(0,0,0,0).ToString()                         // "0px"
+```
+
+## Resolution internals
+
+Two methods expose how a value is resolved at layout time. These are used by the layout engine and are rarely needed in application code:
+
+```csharp
+// Fixed floor only: Px + (Pct/100) × parentValue
+float floor = value.Floor(parentValue);
+
+// Full resolution including grow/auto contributions via a defaultValue fallback
+float px = value.ToPx(parentValue, defaultValue);
+
+// Resolved and clamped between min and max
+float clamped = value.ToPxClamped(parentValue, defaultValue, in min, in max);
+```
+
+## Practical examples
+
+<CodeGroup>
+
+```csharp Fixed sizes
+// Absolute pixel dimensions
+element.Width(UnitValue.Pixels(320f))
+       .Height(UnitValue.Pixels(48f));
+```
+
+```csharp Percentage layout
+// Fill parent width with 16px horizontal margin on each side
+element.Width(UnitValue.Percentage(100f, -32f))
+       .Height(UnitValue.Auto);
+```
+
+```csharp Flex-style stretch
+// Two siblings share available width 2:1
+leftPanel.Width(UnitValue.Stretch(2f));
+rightPanel.Width(UnitValue.Stretch(1f));
+```
+
+```csharp Compound values
+// Minimum 10px gutter + share remaining space
+UnitValue flexWithFloor = UnitValue.Stretch(1f) + UnitValue.Pixels(10f);
+element.Width(flexWithFloor);
+```
+
+</CodeGroup>

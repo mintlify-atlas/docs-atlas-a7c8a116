@@ -1,0 +1,318 @@
+---
+title: "Installing Prowl.Paper and Configuring a Renderer"
+sidebarTitle: "Installation"
+description: "Add Prowl.Paper via NuGet, choose a renderer backend for OpenTK, Raylib, or WebAssembly, configure fonts, and enable HiDPI support."
+---
+
+Prowl.Paper is distributed as a single NuGet package. This page covers every step from package installation to a renderer-ready project, including font setup and HiDPI configuration.
+
+## NuGet Installation
+
+Choose the method that matches your workflow:
+
+<CodeGroup>
+
+```bash .NET CLI
+dotnet add package Prowl.Paper
+```
+
+```powershell Package Manager Console
+Install-Package Prowl.Paper
+```
+
+```xml .csproj PackageReference
+<ItemGroup>
+  <PackageReference Include="Prowl.Paper" Version="1.9.0" />
+</ItemGroup>
+```
+
+</CodeGroup>
+
+### Target Framework Compatibility
+
+Prowl.Paper ships with multi-targeted binaries, so you get native TFM support without any compatibility shims:
+
+| Target Framework | Supported |
+|---|---|
+| `net6.0` | ✅ |
+| `net7.0` | ✅ |
+| `net8.0` | ✅ |
+| `net9.0` | ✅ |
+| `net10.0` | ✅ |
+| `netstandard2.1` | ✅ |
+
+The `netstandard2.1` target makes the library usable from any runtime that implements that standard, including Unity (with IL2CPP) and other non-Microsoft runtimes.
+
+## Understanding Renderer Backends
+
+Prowl.Paper does not submit draw calls to a GPU directly. Instead, `EndFrame` produces a batched list of `DrawCall` objects that it hands off to an implementation of `ICanvasRenderer`. This design keeps the library completely decoupled from any specific graphics API.
+
+```csharp
+// The interface your renderer must implement (from Prowl.Quill)
+public interface ICanvasRenderer
+{
+    bool SupportsBackdropBlur { get; }
+
+    object CreateTexture(uint width, uint height);
+    Int2 GetTextureSize(object texture);
+    void SetTextureData(object texture, IntRect bounds, byte[] data);
+
+    void RenderCalls(Canvas canvas, IReadOnlyList<DrawCall> drawCalls);
+    void Dispose();
+}
+```
+
+You pass your renderer to the `Paper` constructor along with the initial viewport size and font atlas settings:
+
+```csharp
+// Paper.Core.cs — constructor signature
+public Paper(ICanvasRenderer renderer, float width, float height, FontAtlasSettings fontAtlas)
+```
+
+The repository ships three reference renderer implementations. Pick the one that matches your graphics backend, copy it into your project, and adapt as needed.
+
+## Renderer Options
+
+### OpenTK (OpenGL)
+
+The OpenTK renderer uses OpenGL 4 via the `OpenTK.Graphics.OpenGL4` bindings. It manages VAOs, VBOs, an element buffer, a projection uniform, and an optional dual-Kawase backdrop-blur pipeline.
+
+```csharp
+// From Samples/OpenTK/Program.cs
+var nativeWindowSettings = new NativeWindowSettings()
+{
+    ClientSize = new Vector2i(1080, 850),
+    Title = "Paper OpenTK Example",
+    Flags = OpenTK.Windowing.Common.ContextFlags.ForwardCompatible
+};
+
+using var app = new PaperTKWindow(GameWindowSettings.Default, nativeWindowSettings);
+app.Run();
+```
+
+Inside `PaperTKWindow.OnLoad`, the renderer is initialised and passed to `Paper`:
+
+```csharp
+// From Samples/OpenTK/PaperRenderer.cs — renderer initialisation
+public void Initialize(int width, int height)
+{
+    InitializeShaders();
+
+    _vertexArrayObject = GL.GenVertexArray();
+    _vertexBufferObject = GL.GenBuffer();
+    _elementBufferObject = GL.GenBuffer();
+
+    _blurVao = GL.GenVertexArray();
+    _blurFbo = GL.GenFramebuffer();
+
+    TextureTK texture = TextureTK.CreateNew(1, 1);
+    byte[] pixelData = new byte[] { 255, 255, 255, 255 };
+    texture.SetData(new IntRect(0, 0, 1, 1), pixelData);
+    _defaultTexture = texture;
+
+    UpdateProjection(width, height);
+}
+```
+
+The full source is at `Samples/OpenTK/PaperRenderer.cs`.
+
+<Note>
+  Call `PaperRenderer.UpdateProjection(width, height)` whenever your window is resized so the orthographic projection matrix stays in sync with the framebuffer dimensions.
+</Note>
+
+### Raylib
+
+The Raylib renderer is the most compact backend — under 500 lines including the inline GLSL shader source. It integrates with Raylib's `Rlgl` layer for direct vertex submission.
+
+```csharp
+// From Samples/RaylibSample/Program.cs
+int width = 1080;
+int height = 850;
+
+SetConfigFlags(ConfigFlags.ResizableWindow);
+InitWindow(width, height, "Raylib Sample");
+SetTargetFPS(60);
+
+_renderer = new RaylibCanvasRenderer();
+P = new Paper(_renderer, width, height, new Prowl.Quill.FontAtlasSettings());
+```
+
+The frame loop with DPI-aware scale detection:
+
+```csharp
+// From Samples/RaylibSample/Program.cs
+while (!WindowShouldClose())
+{
+    if (width != GetScreenWidth() || height != GetScreenHeight())
+    {
+        width = GetScreenWidth();
+        height = GetScreenHeight();
+        P.SetResolution(width, height);
+    }
+
+    UpdateInput();
+
+    BeginDrawing();
+    ClearBackground(Color.RayWhite);
+
+    float dpiScale = GetScreenWidth() > 0 ? (float)GetRenderWidth() / GetScreenWidth() : 1.0f;
+    P.BeginFrame(GetFrameTime(), dpiScale);
+
+    // ... your UI declarations ...
+
+    P.EndFrame();
+    EndDrawing();
+}
+
+_renderer.Dispose();
+CloseWindow();
+```
+
+The full source is at `Samples/RaylibSample/RaylibCanvasRenderer.cs`.
+
+### WebAssembly / WebGL
+
+The WASM backend wires Paper to a `<canvas>` element in the browser via `JSExport` interop. Initialisation, frame callbacks, and all input events are exported as JavaScript-callable methods.
+
+```csharp
+// From Samples/WasmExample/Program.cs
+[JSExport]
+internal static void Init()
+{
+    WebGLInterop.InitWebGL("canvas");
+
+    _renderer = new WebGLCanvasRenderer();
+    var (cw, ch) = _renderer.GetCanvasSize();
+
+    P = new Paper(_renderer, cw, ch, new FontAtlasSettings());
+    Shared.PaperDemo.Initialize(P);
+}
+
+[JSExport]
+internal static void OnFrame(double deltaTime)
+{
+    float dt = Math.Clamp((float)deltaTime, 0.001f, 0.1f);
+    float dpiScale = (float)WebGLInterop.GetDevicePixelRatio();
+
+    P.BeginFrame(dt, dpiScale);
+    Shared.PaperDemo.RenderUI();
+    P.EndFrame();
+}
+
+[JSExport]
+internal static void OnResize(int width, int height)
+{
+    P.SetResolution(width, height);
+}
+```
+
+The full sample, including the JavaScript host page, is at `Samples/WasmExample/`.
+
+## Implementing Your Own Renderer
+
+If none of the provided backends fits your needs, implement `ICanvasRenderer` directly. The four members you must provide are:
+
+| Member | Responsibility |
+|---|---|
+| `CreateTexture(width, height)` | Allocate a GPU texture; return an opaque handle object. |
+| `GetTextureSize(texture)` | Return the pixel dimensions of a previously created texture. |
+| `SetTextureData(texture, bounds, data)` | Upload a byte region of RGBA pixel data to the texture. |
+| `RenderCalls(canvas, drawCalls)` | Submit the frame's batched draw calls to the GPU. |
+
+```csharp
+public class MyRenderer : ICanvasRenderer
+{
+    public bool SupportsBackdropBlur => false; // set true if you implement blur
+
+    public object CreateTexture(uint width, uint height)
+    {
+        // allocate and return your GPU texture handle
+        throw new NotImplementedException();
+    }
+
+    public Int2 GetTextureSize(object texture)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void SetTextureData(object texture, IntRect bounds, byte[] data)
+    {
+        // upload RGBA data to the region described by bounds
+        throw new NotImplementedException();
+    }
+
+    public void RenderCalls(Canvas canvas, IReadOnlyList<DrawCall> drawCalls)
+    {
+        // iterate drawCalls; each has Vertices, Indices, Brush, Texture, Shader
+        throw new NotImplementedException();
+    }
+
+    public void Dispose()
+    {
+        // release GPU resources
+    }
+}
+```
+
+Use `canvas.Vertices` and `canvas.Indices` to access the geometry, and `drawCall.Brush` for gradient/scissor/texture-transform uniforms. Refer to the OpenTK sample's `RenderCalls` method for a fully annotated example.
+
+## Font Setup
+
+Fonts are managed through `FontAtlasSettings` (passed to the `Paper` constructor) and registered at runtime via `AddFallbackFont`.
+
+```csharp
+// 1. Create Paper with default atlas settings
+var paper = new Paper(renderer, width, height, new FontAtlasSettings());
+
+// 2. Load a TTF/OTF font from disk and register it
+var fontBytes = File.ReadAllBytes("path/to/font.ttf");
+var fontFile = FontFile.FromBytes(fontBytes);
+paper.AddFallbackFont(fontFile);
+
+// 3. Use the font in text declarations
+paper.Box("Label")
+    .Text(Text.Center("Hello", fontFile, Color.White));
+```
+
+You can enumerate system fonts to discover fonts available on the host OS:
+
+```csharp
+// Enumerate fonts installed on the system
+foreach (var font in paper.EnumerateSystemFonts())
+    Console.WriteLine(font.FamilyName);
+```
+
+## HiDPI / Retina Support
+
+Paper uses `DisplayFramebufferScale` to distinguish logical pixels from physical pixels. Set it before `BeginFrame`, or pass the DPI ratio as the optional second argument to `BeginFrame`:
+
+```csharp
+// Option A: set the property directly
+paper.DisplayFramebufferScale = new Float2(2.0f, 2.0f); // Retina / 2× display
+paper.BeginFrame(deltaTime);
+
+// Option B: pass dpiScale to BeginFrame (sets DisplayFramebufferScale internally)
+float dpiScale = GetRenderWidth() / (float)GetScreenWidth(); // Raylib example
+paper.BeginFrame(deltaTime, dpiScale);
+```
+
+For displays where you also want style values (padding, border widths, etc.) scaled up proportionally, call `ScaleAllSizes` **once** at startup:
+
+```csharp
+// Scale all registered default style values by the monitor's DPI ratio
+paper.ScaleAllSizes(dpiRatio);
+```
+
+<Warning>
+  Call `ScaleAllSizes` only once during initialisation. Calling it repeatedly compounds the scale factor, which will produce oversized UI elements.
+</Warning>
+
+## Version Compatibility
+
+| Prowl.Paper | Prowl.Quill | .NET |
+|---|---|---|
+| 1.9.x | 1.4.0 | 6 – 10, netstandard2.1 |
+
+<Info>
+  As Prowl.Paper is under active development, always pin to a specific version in your `.csproj` to avoid unexpected breaking changes between releases. Check the [GitHub releases page](https://github.com/ProwlEngine/Prowl.Paper/releases) for the latest version number.
+</Info>

@@ -1,47 +1,210 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Prowl.Paper"
+sidebarTitle: "Quickstart"
+description: "Install Prowl.Paper, wire up a renderer backend, and build your first frame-loop UI in minutes with this step-by-step guide."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This guide walks you from a blank .NET project to a running Prowl.Paper UI in four steps. By the end you will have Paper installed, a renderer wired up, a working frame loop, and a clickable button on screen.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+### Install the NuGet Package
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+Add Prowl.Paper to your project with the .NET CLI:
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+```bash
+dotnet add package Prowl.Paper
+```
+
+That single package brings in the layout engine, the animation system, the text renderer, and all core APIs. The only transitive dependency is **Prowl.Quill**, which is pulled in automatically.
+
+<Note>
+  A renderer backend is **not** included in the NuGet package — you must supply one. See [Step 2](#pick-and-initialise-a-renderer) below, or read the full [Installation guide](./installation) for backend details.
+</Note>
+
+### Pick and Initialise a Renderer
+
+Paper draws everything through the `ICanvasRenderer` interface, so it is completely decoupled from any specific graphics API. You must pass a concrete renderer to the `Paper` constructor:
+
+```csharp
+// Signature from Paper.Core.cs
+public Paper(ICanvasRenderer renderer, float width, float height, FontAtlasSettings fontAtlas)
+```
+
+The repository ships ready-to-use reference implementations under `Samples/`:
+
+| Backend | Location |
+|---|---|
+| OpenTK (OpenGL) | `Samples/OpenTK/PaperRenderer.cs` |
+| Raylib | `Samples/RaylibSample/RaylibCanvasRenderer.cs` |
+| WebGL / WASM | `Samples/WasmExample/` |
+
+Here is how the Raylib sample constructs Paper:
+
+```csharp
+// From Samples/RaylibSample/Program.cs
+_renderer = new RaylibCanvasRenderer();
+P = new Paper(_renderer, width, height, new Prowl.Quill.FontAtlasSettings());
+```
+
+And the equivalent for OpenTK:
+
+```csharp
+// From Samples/OpenTK/Program.cs — inside PaperTKWindow
+// (renderer is instantiated in OnLoad, then passed to the Paper constructor)
+using var app = new PaperTKWindow(GameWindowSettings.Default, nativeWindowSettings);
+app.Run();
+```
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  Copy the renderer file that matches your graphics backend from `Samples/` into your own project as a starting point. Each renderer is self-contained and under 500 lines.
 </Tip>
+
+### Load a Font
+
+Paper uses `FontAtlasSettings` for atlas configuration and `Canvas.AddFallbackFont` to register typefaces. Load a font file before your frame loop starts:
+
+```csharp
+// Load a TTF font file and register it as the fallback font
+var fontBytes = File.ReadAllBytes("path/to/font.ttf");
+var fontFile = FontFile.FromBytes(fontBytes);
+P.AddFallbackFont(fontFile);
+```
+
+### Run the Frame Loop
+
+Paper's API is structured around three calls per frame: `BeginFrame`, your UI declarations, and `EndFrame`. Wrap these inside whatever loop your host framework provides.
+
+```csharp
+// In your main loop:
+void RenderUI()
+{
+    // Begin the UI frame
+    Paper.BeginFrame(deltaTime);
+    
+    // Define your UI
+    using (Paper.Column("MainContainer")
+        .BackgroundColor(240, 240, 240)
+        .Enter())
+    {
+        // A header
+        using (Paper.Box("Header")
+            .Height(60)
+            .BackgroundColor(50, 120, 200)
+            .Text(Text.Center("My Application", myFont, Color.White))
+            .Enter()) { }
+            
+        // Content area
+        using (Paper.Row("Content").Enter())
+        {
+            // Sidebar
+            Paper.Box("Sidebar")
+                .Width(200)
+                .BackgroundColor(220, 220, 220);
+                
+            // Main content
+            Paper.Box("MainContent");
+        }
+    }
+    
+    // End the UI frame
+    Paper.EndFrame();
+}
+```
+
+The layout above produces a full-window column with a 60 px header bar, a 200 px sidebar, and a main content area that stretches to fill the remaining space — all without a single size calculation on your part.
+
+<Info>
+  `using (...Element().Enter())` is the pattern for entering a container element's scope. Children declared inside the `using` block are automatically parented to that container. Leaf elements (those with no children) do not need `.Enter()`.
+</Info>
+
+When the window is resized, call `SetResolution` so the layout engine knows the new dimensions:
+
+```csharp
+// From Samples/RaylibSample/Program.cs
+if (width != GetScreenWidth() || height != GetScreenHeight())
+{
+    width = GetScreenWidth();
+    height = GetScreenHeight();
+    P.SetResolution(width, height);
+}
+```
+
+</Steps>
+
+## Building a Clickable Button
+
+Interactive elements use the same fluent API as static ones — just chain an event handler:
+
+```csharp
+Paper.Box("MyButton")
+    .Size(100)
+    .BackgroundColor(Color.ForestGreen)
+    .Rounded(8)
+    .Text(Text.Center("Click Me", myFont, Color.White))
+    .OnClick((rect) => Console.WriteLine("Button clicked!"));
+```
+
+You can layer in hover and active states with animated transitions:
+
+```csharp
+Paper.Box("AnimatedButton")
+    .Width(120).Height(40)
+    .BackgroundColor(Color.ForestGreen)
+    .Rounded(8)
+    .Hovered
+        .BackgroundColor(Color.DarkGreen)
+        .End()
+    .Active
+        .BackgroundColor(Color.DarkOliveGreen)
+        .End()
+    .Transition(GuiProp.BackgroundColor, 0.2, Paper.Easing.SineInOut)
+    .Text(Text.Center("Click Me", myFont, Color.White))
+    .OnClick((rect) => Console.WriteLine("Clicked!"));
+```
+
+<Tip>
+  Style blocks are applied in declaration order. If you place `.If(someCondition)` after `.Hovered`, the condition takes priority over the hover state when it is true — a deliberate design choice that makes precedence explicit and predictable.
+</Tip>
+
+## Forwarding Input
+
+Paper does not poll input itself; you must forward events from your host framework each frame before calling `BeginFrame`:
+
+```csharp
+// Minimal input forwarding (Raylib example)
+void UpdateInput()
+{
+    Vector2 mousePos = GetMousePosition();
+    P.SetPointerState(PaperMouseBtn.Unknown, mousePos.X, mousePos.Y, false, true);
+
+    if (IsMouseButtonPressed(MouseButton.Left))
+        P.SetPointerState(PaperMouseBtn.Left, mousePos.X, mousePos.Y, true, false);
+    if (IsMouseButtonReleased(MouseButton.Left))
+        P.SetPointerState(PaperMouseBtn.Left, mousePos.X, mousePos.Y, false, false);
+
+    float wheelDelta = GetMouseWheelMove();
+    if (wheelDelta != 0)
+        P.SetPointerWheel(wheelDelta);
+
+    int key = GetCharPressed();
+    while (key > 0)
+    {
+        P.AddInputCharacter(((char)key).ToString());
+        key = GetCharPressed();
+    }
+}
+```
+
+The full key-mapping logic for each backend can be found in the respective sample `Program.cs` files.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="box-open" href="./installation">
+    Detailed setup for all three renderer backends, HiDPI configuration, font loading, and a version compatibility table.
+  </Card>
+  <Card title="GitHub — Samples" icon="github" href="https://github.com/ProwlEngine/Prowl.Paper/tree/main/Samples">
+    Browse the complete OpenTK, Raylib, and WebAssembly sample projects to see a fully wired-up application.
+  </Card>
+</CardGroup>

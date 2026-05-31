@@ -1,0 +1,197 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Prowl.Paper",
+  "projectDescription": "An immediate-mode .NET UI library with a fluent API, flexible layout engine, built-in animation system, and hardware-accelerated vector graphics — designed to be embedded in game engines and desktop applications.",
+  "theme": "luma",
+  "primaryColor": "#5c64f4",
+  "lightColor": "#acb4fc",
+  "darkColor": "#ffffff",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/immediate-mode",
+              "concepts/element-hierarchy",
+              "concepts/layout-system",
+              "concepts/unit-values"
+            ]
+          },
+          {
+            "group": "Styling & Animation",
+            "pages": [
+              "guides/styling",
+              "guides/state-styles",
+              "guides/animation",
+              "guides/transitions"
+            ]
+          },
+          {
+            "group": "Events & Input",
+            "pages": [
+              "guides/event-handling",
+              "guides/input-integration",
+              "guides/keyboard-navigation"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "guides/text-rendering",
+              "guides/vector-drawing",
+              "guides/layers",
+              "guides/integrating-renderer"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Paper Class",
+            "pages": [
+              "api/paper-core",
+              "api/paper-elements",
+              "api/paper-animation",
+              "api/paper-input",
+              "api/paper-styles"
+            ]
+          },
+          {
+            "group": "Element Builder",
+            "pages": [
+              "api/element-builder-layout",
+              "api/element-builder-style",
+              "api/element-builder-events",
+              "api/element-builder-text"
+            ]
+          },
+          {
+            "group": "Types & Enums",
+            "pages": [
+              "api/unit-value",
+              "api/gui-prop",
+              "api/easing",
+              "api/events"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Immediate-mode UI paradigm — no persistent widget objects, declarative per-frame UI definition",
+    "Fluent builder API via ElementBuilder with chainable style, layout, and event methods",
+    "Flexible layout engine (Row, Column, SelfDirected) with Pixels, Percentage, Stretch, and Auto sizing",
+    "Built-in animation system: AnimateBool, AnimateFloat, AnimateSpring, AnimateColor, AnimateVec2, Shake, Pulse, OneShot",
+    "Property transitions with configurable duration and easing functions (20+ built-in easings)",
+    "State-driven styles via .Hovered, .Active, .Focused, .If() conditional blocks",
+    "Named style templates and style families with pseudo-state inheritance",
+    "Rich event system: OnClick, OnPress, OnHeld, OnDragStart, OnDragging, OnDragEnd, OnScroll, OnKeyPressed, OnTextInput, OnFocusChange",
+    "Parent-child event bubbling with opt-out via StopEventPropagation",
+    "Built-in TextField and TextArea controls with cursor, selection, clipboard, and mask support",
+    "Hardware-accelerated, anti-aliased vector graphics via Prowl.Quill (Quill Canvas)",
+    "Background gradients (Linear, Radial, Box), box shadows, backdrop blur (frosted glass)",
+    "Element transforms: Translate, Scale, Rotate, Skew with configurable transform origin",
+    "Layer system (Base, Overlay, Topmost) with arbitrary integer layer values",
+    "Text rendering: plain text, Markdown, Rich text with animation tags (shake, wave, rainbow, typewriter)",
+    "HiDPI / Retina support via DisplayFramebufferScale",
+    "Cross-platform: Windows, Linux, macOS; backends for OpenTK, Raylib, WebAssembly/WebGL",
+    "Keyboard tab-order navigation and focusable element system",
+    "Per-element persistent storage across frames via GetElementStorage / SetElementStorage",
+    "Packaging: multi-target NuGet package (net6 through net10, netstandard2.1)"
+  ],
+  "publicApiSurface": [
+    "Paper(ICanvasRenderer, float, float, FontAtlasSettings) — constructor",
+    "Paper.BeginFrame(float deltaTime, float dpiScale)",
+    "Paper.EndFrame()",
+    "Paper.SetResolution(float width, float height)",
+    "Paper.Box(string stringID, int intID, int lineID) : ElementBuilder",
+    "Paper.Row(string stringID, int intID, int lineID) : ElementBuilder",
+    "Paper.Column(string stringID, int intID, int lineID) : ElementBuilder",
+    "Paper.Draw(Action<Canvas, Rect>)",
+    "Paper.DrawForeground(Action<Canvas, Rect>)",
+    "Paper.PushID(string|int) / PopID()",
+    "Paper.MoveToRoot()",
+    "Paper.FindElementByID(int) : ElementHandle",
+    "Paper.GetElementStorage<T>(string key, T defaultValue)",
+    "Paper.SetElementStorage<T>(string key, T value)",
+    "Paper.GetRootStorage<T>(string key) / SetRootStorage<T>(string key, T value)",
+    "Paper.AnimateBool(bool target, float duration, Func<float,float> easing)",
+    "Paper.AnimateFloat(float target, float speed)",
+    "Paper.AnimateSpring(float target, float frequency, float damping)",
+    "Paper.AnimateColor(Color target, float speed)",
+    "Paper.AnimateVec2(Float2 target, float speed)",
+    "Paper.AnimateAngle(float targetDegrees, float speed)",
+    "Paper.OneShot(bool trigger, float duration, Func<float,float> easing)",
+    "Paper.Pulse(float period)",
+    "Paper.StableFor(bool current)",
+    "Paper.Shake(bool trigger, float intensity, float decay, float frequency)",
+    "Paper.SetKeyState(PaperKey key, bool isKeyDown)",
+    "Paper.SetPointerPosition(float x, float y)",
+    "Paper.SetPointerState(PaperMouseBtn btn, float x, float y, bool isDown, bool isMove)",
+    "Paper.SetPointerWheel(float wheel)",
+    "Paper.AddInputCharacter(string text)",
+    "Paper.IsKeyDown/IsKeyUp/IsKeyPressed/IsKeyReleased/IsKeyHeld(PaperKey)",
+    "Paper.IsPointerDown/IsPointerUp/IsPointerPressed/IsPointerReleased/IsPointerHeld(PaperMouseBtn)",
+    "Paper.SetClipboardHandler(IClipboardHandler)",
+    "Paper.DefineStyle(string name) : StyleTemplate",
+    "Paper.DefineStyle(string name, params string[] inheritFrom) : StyleTemplate",
+    "Paper.RegisterStyle(string name, StyleTemplate)",
+    "Paper.RegisterStyleFamily(string baseName, ...)",
+    "Paper.CreateStyleFamily(string baseName) : StyleFamilyBuilder",
+    "Paper.ScaleAllSizes(float scaleFactor)",
+    "Paper.Stretch(float factor) / Pixels(float) / Percent(float, float) / Auto",
+    "Paper.MeasureText(string, float, FontFile, float) : Float2",
+    "Paper.CreateLayout(string, TextLayoutSettings) : TextLayout",
+    "Paper.ResetRichText(ElementHandle)",
+    "ElementBuilder.BackgroundColor / BorderColor / BorderWidth / Rounded / BoxShadow / BackdropBlur",
+    "ElementBuilder.BackgroundLinearGradient / BackgroundRadialGradient / BackgroundBoxGradient",
+    "ElementBuilder.BackgroundImage(object texture)",
+    "ElementBuilder.Width / Height / Size / MinWidth / MaxWidth / MinHeight / MaxHeight",
+    "ElementBuilder.Left / Right / Top / Bottom / Position",
+    "ElementBuilder.Margin / Padding / ChildLeft / ChildRight / ChildTop / ChildBottom / RowBetween / ColBetween",
+    "ElementBuilder.Translate / Scale / Rotate / Skew / TransformOrigin",
+    "ElementBuilder.Transition(GuiProp, float duration, Func<float,float> easing)",
+    "ElementBuilder.Hovered / Active / Focused / Normal : StateDrivenStyle (state blocks)",
+    "ElementBuilder.If(bool condition) : StateDrivenStyle",
+    "ElementBuilder.Style(StyleTemplate) / Style(params string[] names)",
+    "ElementBuilder.LayoutType(LayoutType) / PositionType(PositionType)",
+    "ElementBuilder.Visible(bool) / Clip() / ClampToScreen() / Layer(int)",
+    "ElementBuilder.Text(string, FontFile) / Markdown(...) / RichText(...)",
+    "ElementBuilder.Alignment(TextAlignment) / Wrap(TextWrapMode) / FontSize / TextColor",
+    "ElementBuilder.Image(object texture, Color32? tint, float rotation, Float2? pivot, ImageScaleMode)",
+    "ElementBuilder.CustomShader(object shader, Action<ShaderUniforms>?)",
+    "ElementBuilder.ContentSizer(Func<float?,float?,(float,float)?>)",
+    "ElementBuilder.TextField(string value, TextInputSettings, Action<string> onChange)",
+    "ElementBuilder.TextArea(string value, TextInputSettings, Action<string> onChange)",
+    "ElementBuilder.OnClick / OnPress / OnHeld / OnRelease / OnDoubleClick / OnRightClick",
+    "ElementBuilder.OnDragStart / OnDragging / OnDragEnd",
+    "ElementBuilder.OnScroll / OnHover / OnEnter / OnLeave",
+    "ElementBuilder.OnKeyPressed / OnTextInput / OnFocusChange / OnPostLayout",
+    "ElementBuilder.HookToParent() / StopEventPropagation() / IsNotInteractable() / IsNotFocusable()",
+    "ElementBuilder.TabIndex(int) / InheritStyle(ElementHandle?)",
+    "ElementBuilder.Enter() : IDisposable",
+    "StyleTemplate (fluent: same style methods as ElementBuilder, plus ApplyTo / Clone)",
+    "StateDrivenStyle.End() — closes a conditional style block",
+    "Easing static class: Linear, EaseIn/Out/InOut, CubicIn/Out/InOut, SineIn/Out/InOut, ElasticIn/Out, BounceIn/Out, etc.",
+    "GuiProp enum — all animatable/styleable property identifiers",
+    "UnitValue.Pixels / Percentage / Stretch / Auto factory methods",
+    "Layer.Base / Layer.Overlay / Layer.Topmost constants",
+    "ICanvasRenderer interface — implement to plug in a custom rendering backend",
+    "IClipboardHandler interface — implement to integrate OS clipboard",
+    "PaperKey enum / PaperMouseBtn enum"
+  ]
+}

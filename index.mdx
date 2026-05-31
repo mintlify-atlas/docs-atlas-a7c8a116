@@ -1,20 +1,104 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Prowl.Paper: Immediate-Mode .NET UI Library"
+sidebarTitle: "Home"
+description: "Prowl.Paper is an immediate-mode C# UI library with a fluent API, hardware-accelerated vector graphics, and a powerful built-in animation system for games and desktop apps."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Prowl.Paper is an open-source, MIT-licensed immediate-mode UI library for .NET. It powers the Prowl Game Engine's editor UI and is available as a standalone NuGet package for any .NET 6–10 or netstandard2.1 project. Rather than managing persistent widget trees, Paper lets you declare your entire UI on every frame — making your code simpler, more direct, and trivially reactive to any state change.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first Paper UI in minutes with a working code example.
+  </Card>
+  <Card title="Installation" icon="package" href="/installation">
+    Add Prowl.Paper via NuGet and configure a renderer backend.
+  </Card>
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts/immediate-mode">
+    Understand immediate-mode UI, elements, layout, and the frame loop.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/paper-core">
+    Full reference for every class, method, and property in the library.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What makes Paper different
+
+Paper follows the **immediate-mode GUI (IMGUI)** paradigm — there are no retained widget objects, no data-binding, and no virtual DOM. You write ordinary C# code that runs every frame:
+
+```csharp
+Paper.Box("MyButton")
+    .Size(120, 40)
+    .BackgroundColor(Color.ForestGreen)
+    .Rounded(8)
+    .Text("Click Me", myFont)
+    .Hovered
+        .BackgroundColor(Color.DarkGreen)
+    .End()
+    .Transition(GuiProp.BackgroundColor, 0.15f, Easing.SineInOut)
+    .OnClick(_ => Console.WriteLine("clicked!"));
+```
+
+State changes automatically flow into the next rendered frame — no `setState`, no subscriptions required.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Flexible Layout Engine" icon="table-columns" href="/concepts/layout-system">
+    Row, Column, and absolute positioning with Pixels, Percentage, Stretch, and Auto sizing units.
+  </Card>
+  <Card title="Rich Animation System" icon="wand-magic-sparkles" href="/guides/animation">
+    AnimateBool, AnimateFloat, AnimateSpring, AnimateColor, Shake, Pulse, and more — all stateless from your code's perspective.
+  </Card>
+  <Card title="State-Driven Styles" icon="palette" href="/guides/state-styles">
+    Inline .Hovered, .Active, .Focused, and .If() blocks for conditional styling without any extra state variables.
+  </Card>
+  <Card title="Hardware Vector Graphics" icon="draw-polygon" href="/guides/vector-drawing">
+    Anti-aliased paths, gradients, box shadows, backdrop blur, and custom shaders via Prowl.Quill.
+  </Card>
+  <Card title="Rich Text & Markdown" icon="font" href="/guides/text-rendering">
+    Render plain text, CommonMark Markdown, or tagged rich text with animation effects like typewriter and rainbow.
+  </Card>
+  <Card title="Pluggable Renderers" icon="plug" href="/guides/integrating-renderer">
+    Implement ICanvasRenderer to target OpenTK, Raylib, WebGL/WASM, or any custom backend.
+  </Card>
+</CardGroup>
+
+## Quick example
+
+The snippet below shows a complete minimal app structure. Paper's frame loop is three calls:
+
+<Steps>
+  <Step title="Initialize once">
+    ```csharp
+    var paper = new Paper(myRenderer, screenWidth, screenHeight, fontAtlasSettings);
+    ```
+  </Step>
+  <Step title="Feed input every frame">
+    ```csharp
+    paper.SetPointerPosition(mouseX, mouseY);
+    paper.SetPointerState(PaperMouseBtn.Left, mouseX, mouseY, isLeftDown, false);
+    paper.SetPointerWheel(wheelDelta);
+    ```
+  </Step>
+  <Step title="Declare UI between BeginFrame / EndFrame">
+    ```csharp
+    paper.BeginFrame(deltaTime);
+
+    using (paper.Column("Root").Enter())
+    {
+        paper.Box("Title")
+            .Height(60)
+            .BackgroundColor(50, 120, 200)
+            .Text("My App", titleFont);
+
+        paper.Box("Content");
+    }
+
+    paper.EndFrame();
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Ready-to-run samples for **OpenTK**, **Raylib**, and **WebAssembly/WebGL** are included in the [GitHub repository](https://github.com/ProwlEngine/Prowl.Paper/tree/main/Samples).
+</Note>

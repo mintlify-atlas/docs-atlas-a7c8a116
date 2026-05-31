@@ -1,0 +1,438 @@
+---
+title: "Paper Input API: Keyboard, Mouse, and Clipboard"
+sidebarTitle: "Input API"
+description: "Feed pointer and keyboard events from your host, query button and key states, manage clipboard, configure auto-repeat, and handle cursor visibility."
+---
+
+Paper does not hook into any platform input API directly — you feed events to it each frame, and it maintains a full frame-aware input state that you can query anywhere in your UI code. All feed methods should be called **before** `BeginFrame`. Query methods can be called at any point between `BeginFrame` and `EndFrame`.
+
+---
+
+## Input Feed Methods
+
+Call these from your host application's event handlers or polling loop, **before** `paper.BeginFrame(...)`.
+
+### SetPointerPosition
+
+```csharp
+public void SetPointerPosition(float x, float y)
+```
+
+Updates the pointer's logical position without affecting any button state. Use when you receive a pure move event and have no button information to update.
+
+<ParamField path="x" type="float" required>Horizontal position in logical pixels.</ParamField>
+<ParamField path="y" type="float" required>Vertical position in logical pixels.</ParamField>
+
+### SetPointerState
+
+```csharp
+public void SetPointerState(PaperMouseBtn btn, float x, float y, bool isPointerBtnDown, bool isPointerMove)
+```
+
+Updates both the pointer position and the state of a specific button. When `isPointerMove` is `true`, only the position is updated and the button state is left unchanged.
+
+<ParamField path="btn" type="PaperMouseBtn" required>The button whose state is being reported.</ParamField>
+<ParamField path="x" type="float" required>Current pointer X in logical pixels.</ParamField>
+<ParamField path="y" type="float" required>Current pointer Y in logical pixels.</ParamField>
+<ParamField path="isPointerBtnDown" type="bool" required>Whether `btn` is currently pressed.</ParamField>
+<ParamField path="isPointerMove" type="bool" required>When `true`, the call is treated as a move event and button state is not updated.</ParamField>
+
+### SetPointerWheel
+
+```csharp
+public void SetPointerWheel(float wheel)
+```
+
+Sets the scroll wheel delta for this frame. Paper resets `PointerWheel` to `0` at the end of each `EndFrame`.
+
+<ParamField path="wheel" type="float" required>Wheel delta in logical scroll units. Positive = scroll down/forward.</ParamField>
+
+### AddInputCharacter
+
+```csharp
+public void AddInputCharacter(string text)
+```
+
+Enqueues one or more characters into the text input queue. Carriage returns (`\r`) are normalised to newlines (`\n`). The queue is flushed to the focused element during `EndFrame` and cleared afterward.
+
+<ParamField path="text" type="string" required>The character(s) produced by this key event.</ParamField>
+
+### PushInputText
+
+```csharp
+public void PushInputText(char character)
+```
+
+Enqueues a single character directly. Equivalent to `AddInputCharacter` for a one-character string.
+
+<ParamField path="character" type="char" required>Character to enqueue.</ParamField>
+
+### SetKeyState
+
+```csharp
+public void SetKeyState(PaperKey key, bool isKeyDown)
+```
+
+Updates the state of a keyboard key. Also records `LastKeyPressed` when `isKeyDown` is `true`, and resets auto-repeat counters when `isKeyDown` is `false`.
+
+<ParamField path="key" type="PaperKey" required>The key whose state changed.</ParamField>
+<ParamField path="isKeyDown" type="bool" required>`true` for key-down; `false` for key-up.</ParamField>
+
+### ClearInput
+
+```csharp
+public void ClearInput()
+```
+
+Resets all keyboard and pointer state to their initial values. Useful when the host window loses focus or a modal takes over and you want Paper to ignore stale held-key state.
+
+---
+
+## Keyboard Query Methods
+
+### IsKeyDown
+
+```csharp
+public bool IsKeyDown(PaperKey key)
+```
+
+<ResponseField name="return" type="bool">`true` while `key` is held this frame.</ResponseField>
+
+### IsKeyUp
+
+```csharp
+public bool IsKeyUp(PaperKey key)
+```
+
+<ResponseField name="return" type="bool">`true` while `key` is not held.</ResponseField>
+
+### IsKeyPressed
+
+```csharp
+public bool IsKeyPressed(PaperKey key)
+```
+
+<ResponseField name="return" type="bool">`true` only on the **first frame** the key transitions from up to down.</ResponseField>
+
+### IsKeyReleased
+
+```csharp
+public bool IsKeyReleased(PaperKey key)
+```
+
+<ResponseField name="return" type="bool">`true` only on the frame the key transitions from down to up.</ResponseField>
+
+### IsKeyHeld
+
+```csharp
+public bool IsKeyHeld(PaperKey key, float holdDuration = 0.5f)
+```
+
+<ParamField path="holdDuration" type="float" default="0.5">Minimum seconds the key must have been continuously held.</ParamField>
+<ResponseField name="return" type="bool">`true` if the key has been down for at least `holdDuration` seconds.</ResponseField>
+
+### IsKeyRepeating
+
+```csharp
+public bool IsKeyRepeating(PaperKey key)
+```
+
+<ResponseField name="return" type="bool">
+  `true` when `KeyAutoRepeatEnabled` is `true` and the key has entered the auto-repeat phase (i.e., held past `AutoRepeatDelay` and firing at `AutoRepeatRate`).
+</ResponseField>
+
+### IsKeyPressedOrRepeating
+
+```csharp
+public bool IsKeyPressedOrRepeating(PaperKey key)
+```
+
+Combines `IsKeyPressed` and the auto-repeat check into a single call — the most convenient way to implement text-editor-style held-key behaviour.
+
+<ResponseField name="return" type="bool">`true` if the key was just pressed this frame **or** is currently auto-repeating.</ResponseField>
+
+### LastKeyPressed
+
+```csharp
+public PaperKey LastKeyPressed { get; }
+```
+
+The most recently pressed key. Set when `SetKeyState` is called with `isKeyDown = true`. Not cleared between frames.
+
+---
+
+## Mouse / Pointer Query Methods
+
+### IsPointerDown
+
+```csharp
+public bool IsPointerDown(PaperMouseBtn btn)
+```
+
+<ResponseField name="return" type="bool">`true` while `btn` is held this frame.</ResponseField>
+
+### IsPointerUp
+
+```csharp
+public bool IsPointerUp(PaperMouseBtn btn)
+```
+
+<ResponseField name="return" type="bool">`true` while `btn` is not held.</ResponseField>
+
+### IsPointerPressed
+
+```csharp
+public bool IsPointerPressed(PaperMouseBtn btn)
+```
+
+<ResponseField name="return" type="bool">`true` only on the first frame the button goes down.</ResponseField>
+
+### IsPointerReleased
+
+```csharp
+public bool IsPointerReleased(PaperMouseBtn btn)
+```
+
+<ResponseField name="return" type="bool">`true` only on the frame the button goes up.</ResponseField>
+
+### IsPointerHeld
+
+```csharp
+public bool IsPointerHeld(PaperMouseBtn btn, float holdDuration = 0.5f)
+```
+
+<ParamField path="holdDuration" type="float" default="0.5">Minimum seconds the button must have been held.</ParamField>
+<ResponseField name="return" type="bool">`true` when `btn` has been down for at least `holdDuration` seconds.</ResponseField>
+
+### IsPointerDoubleClick
+
+```csharp
+public bool IsPointerDoubleClick(PaperMouseBtn btn)
+```
+
+Returns `true` when `btn` is pressed within `0.25 s` of its previous release and the pointer hasn't moved more than 2 pixels from the release position.
+
+<ResponseField name="return" type="bool">`true` on the double-click frame.</ResponseField>
+
+### GetPointerClickPos
+
+```csharp
+public Float2 GetPointerClickPos(PaperMouseBtn btn)
+```
+
+<ResponseField name="return" type="Float2">The pointer position recorded when `btn` was last pressed.</ResponseField>
+
+### IsPointerOverRect
+
+```csharp
+public bool IsPointerOverRect(float x, float y, float width, float height)
+```
+
+Simple AABB hit test against the current pointer position.
+
+<ParamField path="x" type="float" required>Rect left edge in logical pixels.</ParamField>
+<ParamField path="y" type="float" required>Rect top edge in logical pixels.</ParamField>
+<ParamField path="width" type="float" required>Rect width.</ParamField>
+<ParamField path="height" type="float" required>Rect height.</ParamField>
+
+<ResponseField name="return" type="bool">`true` if the pointer is inside the rectangle.</ResponseField>
+
+### Pointer Position Properties
+
+<ResponseField name="PointerPos" type="Float2">
+  Current pointer position in logical pixels. Writable — setting this also fires the `OnPointerPosSet` event.
+</ResponseField>
+
+<ResponseField name="PreviousPointerPos" type="Float2">
+  Pointer position at the end of the previous frame.
+</ResponseField>
+
+<ResponseField name="PointerDelta" type="Float2">
+  `PointerPos - PreviousPointerPos`. Zero when the pointer has not moved.
+</ResponseField>
+
+<ResponseField name="IsPointerMoving" type="bool">
+  `true` when `PointerDelta` has non-zero length squared.
+</ResponseField>
+
+<ResponseField name="PointerWheel" type="float">
+  Scroll wheel delta for the current frame. Reset to `0` at the end of each `EndFrame`.
+</ResponseField>
+
+<ResponseField name="LastButtonPressed" type="PaperMouseBtn">
+  The button most recently updated by `SetPointerState`.
+</ResponseField>
+
+---
+
+## Keyboard Capture
+
+### CaptureKeyboard
+
+```csharp
+public void CaptureKeyboard()
+```
+
+Signals that the current element wants exclusive keyboard input for this frame. Sets `WantsCaptureKeyboard` to `true` at the end of the frame. Your host can read `WantsCaptureKeyboard` after `EndFrame` to suppress its own key handling.
+
+### WantsCaptureKeyboard
+
+```csharp
+public bool WantsCaptureKeyboard { get; }
+```
+
+`true` after `EndFrame` if any element called `CaptureKeyboard` this frame. Read this in your host to prevent passing keyboard events to game logic while a text field is focused.
+
+---
+
+## Auto-Repeat Configuration
+
+Auto-repeat makes held keys fire repeated `IsKeyPressedOrRepeating` pulses, matching system key-repeat behaviour.
+
+<ResponseField name="KeyAutoRepeatEnabled" type="bool">
+  Enables or disables key auto-repeat globally. Default `true`.
+</ResponseField>
+
+<ResponseField name="AutoRepeatDelay" type="float">
+  Seconds a key must be held before auto-repeat begins. Default `0.8 s`. Minimum safe value is `0.1 s`.
+</ResponseField>
+
+<ResponseField name="AutoRepeatRate" type="float">
+  Seconds between repeat pulses once repeating has started. Default `0.05 s` (20 repeats/s). Minimum is `0.01 s` (100 repeats/s).
+</ResponseField>
+
+---
+
+## Clipboard
+
+Paper decouples clipboard access behind an interface to remain platform-agnostic.
+
+### IClipboardHandler
+
+```csharp
+public interface IClipboardHandler
+{
+    string GetClipboardText();
+    void SetClipboardText(string text);
+}
+```
+
+Implement this interface in your host project and register it with `SetClipboardHandler`.
+
+### SetClipboardHandler
+
+```csharp
+public void SetClipboardHandler(IClipboardHandler handler)
+```
+
+<ParamField path="handler" type="IClipboardHandler" required>Your platform clipboard implementation. Must not be `null`.</ParamField>
+
+### GetClipboard
+
+```csharp
+public string GetClipboard()
+```
+
+Calls `IClipboardHandler.GetClipboardText()`. Logs a warning and returns `""` if no handler is registered.
+
+<ResponseField name="return" type="string">Current clipboard text.</ResponseField>
+
+### SetClipboard
+
+```csharp
+public void SetClipboard(string text)
+```
+
+Calls `IClipboardHandler.SetClipboardText(text)`. Logs a warning if no handler is registered.
+
+<ParamField path="text" type="string" required>Text to place on the system clipboard.</ParamField>
+
+---
+
+## Cursor Visibility
+
+### SetCursorVisibility
+
+```csharp
+public void SetCursorVisibility(bool visible)
+```
+
+Fires the `OnCursorVisibilitySet` event with `visible`. Hook this event in your host to show or hide the OS cursor.
+
+<ParamField path="visible" type="bool" required>`true` to show the cursor; `false` to hide it.</ParamField>
+
+### Events
+
+<ResponseField name="OnPointerPosSet" type="event Action&lt;Float2&gt;">
+  Fired whenever `PointerPos` is set (via the property setter). Passes the new position.
+</ResponseField>
+
+<ResponseField name="OnCursorVisibilitySet" type="event Action&lt;bool&gt;">
+  Fired whenever `SetCursorVisibility` is called. Passes the requested visibility.
+</ResponseField>
+
+---
+
+## PaperKey Enum
+
+All keyboard keys supported by Paper. Pass values from this enum to `SetKeyState` and all `IsKey*` query methods.
+
+| Group | Values |
+|---|---|
+| **Alpha** | `A`–`Z` |
+| **Digits** | `Num0`–`Num9` |
+| **Function** | `F1`–`F12` |
+| **Control** | `Enter`, `Escape`, `Backspace`, `Tab`, `Space` |
+| **Punctuation** | `Minus`, `Equals`, `LeftBracket`, `RightBracket`, `Backslash`, `Semicolon`, `Apostrophe`, `Grave`, `Comma`, `Period`, `Slash` |
+| **System** | `CapsLock`, `PrintScreen`, `ScrollLock`, `Pause`, `Insert`, `Home`, `PageUp`, `Delete`, `End`, `PageDown` |
+| **Arrows** | `Right`, `Left`, `Down`, `Up` |
+| **Numpad** | `NumLock`, `KeypadDivide`, `KeypadMultiply`, `KeypadMinus`, `KeypadPlus`, `KeypadEnter`, `KeypadEquals`, `Keypad0`–`Keypad9`, `KeypadDecimal` |
+| **Modifiers** | `LeftControl`, `LeftShift`, `LeftAlt`, `LeftSuper`, `RightControl`, `RightShift`, `RightAlt`, `RightSuper` |
+| **Media** | `AudioNext`, `AudioPrevious`, `AudioStop`, `AudioPlay`, `AudioMute` |
+| **Application** | `Application`, `Menu`, `Select`, `Help` |
+| **Sentinel** | `Unknown = 0` |
+
+---
+
+## PaperMouseBtn Enum
+
+| Value | Meaning |
+|---|---|
+| `Unknown` | Sentinel / unset |
+| `Left` | Primary / left button |
+| `Middle` | Middle / scroll-wheel button |
+| `Right` | Secondary / right button |
+| `Button4`–`Button8` | Extra buttons on extended mice |
+
+---
+
+## Example: Host Wiring
+
+```csharp
+// In your host's event loop (e.g., SDL2, GLFW, Win32):
+
+// Movement
+paper.SetPointerPosition(mouseEvent.X, mouseEvent.Y);
+
+// Button down
+paper.SetPointerState(PaperMouseBtn.Left, mouseEvent.X, mouseEvent.Y,
+    isPointerBtnDown: true, isPointerMove: false);
+
+// Scroll
+paper.SetPointerWheel(scrollEvent.DeltaY);
+
+// Key down
+paper.SetKeyState(PaperKey.A, isKeyDown: true);
+
+// Text input (produced by the IME / OS key translation)
+paper.AddInputCharacter("a");
+
+// --- then --- 
+paper.BeginFrame(deltaTime);
+// ... UI code ...
+paper.EndFrame();
+
+// Read capture flags after EndFrame
+if (paper.WantsCaptureKeyboard)
+    SuppressGameKeyHandling();
+```

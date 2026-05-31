@@ -1,0 +1,195 @@
+---
+title: "Property Transitions and Easing in Prowl.Paper"
+sidebarTitle: "Transitions"
+description: "Animate any style property automatically when its value changes using .Transition(), with full control over duration and easing curves including custom functions."
+---
+
+Property transitions let Paper interpolate a style property from its old value to a new one whenever that value changes — without any explicit animation state in your code. You declare _what_ should animate and _how long_ it should take; Paper handles the rest automatically across frames.
+
+## The `.Transition()` method
+
+```csharp
+ElementBuilder Transition(
+    GuiProp property,
+    float duration,
+    Func<float, float>? easing = null)
+```
+
+Call `.Transition()` on an element to register a transition for one property. When the value of `property` changes between frames, Paper plays a smooth interpolation over `duration` seconds.
+
+```csharp
+Paper.Box("AnimatedPanel")
+    .BackgroundColor(Color.Blue)
+    .Transition(GuiProp.BackgroundColor, 0.3f, Easing.SineInOut);
+```
+
+<Note>
+Transitions are re-registered each frame — just like all other style calls. Place them in the **base** style chain (not inside a `.Hovered` or `.If()` block) so they fire in both directions: entering and leaving the hover state.
+</Note>
+
+## How transitions interact with state styles
+
+The most common pattern is to set one value as the base and a different value inside a state block. Paper detects the change each frame and interpolates automatically:
+
+```csharp
+Paper.Box("Button")
+    .BackgroundColor(Color.FromArgb(50, 0, 0, 0))   // base value
+    .Hovered
+        .BackgroundColor(Color.FromArgb(100, primaryColor)) // hover value
+        .End()
+    .Transition(GuiProp.BackgroundColor, 0.2f, Easing.SineOut);
+```
+
+When the pointer enters the element the background smoothly shifts to the hover colour over 0.2 seconds. When it leaves, it transitions back equally smoothly — the same `Transition` declaration covers both directions.
+
+## Multiple transitions on one element
+
+Register a separate `.Transition()` call for each property you want to animate:
+
+```csharp
+Paper.Box("Card")
+    .BackgroundColor(cardBackground)
+    .Rounded(8)
+    .BoxShadow(0, 2, 6, 0, Color.FromArgb(100, 0, 0, 0))
+    .Hovered
+        .Rounded(12)
+        .BoxShadow(0, 4, 12, 0, Color.FromArgb(160, 0, 0, 0))
+        .Scale(1.05f)
+        .End()
+    .Transition(GuiProp.Rounded,     0.2f)
+    .Transition(GuiProp.BoxShadow,   0.2f)
+    .Transition(GuiProp.ScaleX,      0.2f)
+    .Transition(GuiProp.ScaleY,      0.2f);
+```
+
+Each property follows its own independent timeline and easing curve.
+
+## TransitionConfig
+
+Internally Paper stores transition settings in a `TransitionConfig` object:
+
+```csharp
+public class TransitionConfig
+{
+    public float Duration { get; set; }
+    public Func<float, float>? EasingFunction { get; set; }
+}
+```
+
+You never need to create `TransitionConfig` directly — `.Transition()` builds it for you — but it is useful to understand when reading source code or building style templates:
+
+```csharp
+var buttonStyle = new StyleTemplate()
+    .BackgroundColor(Color.Gray)
+    .Transition(GuiProp.BackgroundColor, 0.2f, Easing.SineOut)
+    .Transition(GuiProp.ScaleX, 0.1f)
+    .Transition(GuiProp.ScaleY, 0.1f);
+```
+
+## Which properties support transitions
+
+Any property whose type can be linearly interpolated supports transitions. This covers all numeric properties, colours, vectors, gradients, box shadows, and transform properties:
+
+<CardGroup cols={2}>
+<Card title="Visual">
+`BackgroundColor`, `BorderColor`, `BorderWidth`, `Rounded`, `BoxShadow`, `BackdropBlur`, `BackgroundGradient`
+</Card>
+<Card title="Transform">
+`TranslateX`, `TranslateY`, `ScaleX`, `ScaleY`, `Rotate`, `SkewX`, `SkewY`, `OriginX`, `OriginY`
+</Card>
+<Card title="Layout">
+`Width`, `Height`, `Left`, `Right`, `Top`, `Bottom`, `PaddingLeft`, `PaddingRight`, `PaddingTop`, `PaddingBottom`
+</Card>
+<Card title="Text">
+`TextColor`, `FontSize`, `LetterSpacing`, `LineHeight`, `WordSpacing`
+</Card>
+</CardGroup>
+
+Non-interpolatable types (such as `BackgroundImage`) snap immediately to the new value regardless of a registered transition.
+
+## Built-in easing functions
+
+All easing functions live in the static `Easing` class and have the signature `float Easing(float t)` where `t` is the normalised `0..1` progress.
+
+| Family | Functions |
+|---|---|
+| **Linear** | `Linear` |
+| **Quadratic** | `EaseIn`, `EaseOut`, `EaseInOut` |
+| **Cubic** | `CubicIn`, `CubicOut`, `CubicInOut` |
+| **Quartic** | `QuartIn`, `QuartOut`, `QuartInOut` |
+| **Quintic** | `QuintIn`, `QuintOut`, `QuintInOut` |
+| **Sinusoidal** | `SineIn`, `SineOut`, `SineInOut` |
+| **Exponential** | `ExpoIn`, `ExpoOut`, `ExpoInOut` |
+| **Circular** | `CircIn`, `CircOut`, `CircInOut` |
+| **Back** | `BackIn`, `BackOut`, `BackInOut` |
+| **Elastic** | `ElasticIn`, `ElasticOut`, `ElasticInOut` |
+| **Bounce** | `BounceIn`, `BounceOut`, `BounceInOut` |
+| **Utility** | `Step`, `SmoothStep`, `SmootherStep`, `Spring` |
+
+**Choosing a family:**
+
+- Use **Sine** or **Quad** variants for subtle UI motion — they feel natural without being distracting.
+- Use **Expo** or **Circ** for a crisp, snappy feel.
+- Use **Back** when a slight overshoot adds character (menus sliding into view).
+- Use **Elastic** sparingly — great for playful highlights, jarring in dense UIs.
+- Use **Bounce** for game-style feedback (notifications dropping in).
+
+## Custom easing functions
+
+Any `Func<float, float>` that maps `[0, 1] → float` is a valid easing. You can pass a lambda directly:
+
+```csharp
+// Gentle snap: fast start, slow finish
+Func<float, float> myEase = t => 1f - (1f - t) * (1f - t) * (1f - t);
+
+Paper.Box("Snappy")
+    .Transition(GuiProp.ScaleX, 0.25f, myEase)
+    .Transition(GuiProp.ScaleY, 0.25f, myEase);
+```
+
+You can also use the parameterised `Easing.Spring` function to tune oscillation and damping without needing `AnimateSpring`:
+
+```csharp
+.Transition(GuiProp.TranslateY, 0.6f,
+    t => Easing.Spring(t, dampingRatio: 0.4f, angularFrequency: 18f))
+```
+
+## Complete button hover example
+
+The following example builds a fully animated primary button entirely with transitions, matching the pattern used in the included demo theme:
+
+```csharp
+// Register the style family once at startup
+gui.CreateStyleFamily("button-primary")
+    .Base(new StyleTemplate()
+        .Height(50)
+        .Rounded(8)
+        .BackgroundColor(primaryColor)
+        // Transitions declared in base → fire in both directions
+        .Transition(GuiProp.BackgroundColor, 0.2f, Easing.SineInOut)
+        .Transition(GuiProp.Rounded,         0.2f, Easing.SineInOut)
+        .Transition(GuiProp.ScaleX,          0.1f, Easing.SineOut)
+        .Transition(GuiProp.ScaleY,          0.1f, Easing.SineOut)
+        .Transition(GuiProp.BoxShadow,       0.2f))
+    .Hovered(new StyleTemplate()
+        .BackgroundColor(Color.FromArgb(255, 100, 160, 245))
+        .Rounded(12)
+        .BoxShadow(0, 4, 16, 0, Color.FromArgb(120, 69, 135, 235)))
+    .Active(new StyleTemplate()
+        .Scale(0.95f)
+        .BackgroundColor(Color.FromArgb(255, 50, 110, 200))
+        .BoxShadow(0, 1, 4, 0, Color.FromArgb(80, 0, 0, 0)))
+    .Register();
+
+// --- Per-frame usage (inside BeginFrame / EndFrame) ---
+Paper.Box("PrimaryButton")
+    .Style("button-primary")
+    .TextColor(Color.White)
+    .Text("Get Started", myFont)
+    .OnClick(e => StartOnboarding())
+    .Enter();
+```
+
+<Tip>
+Attach a transition to `GuiProp.BoxShadow` as well as colour and scale — even a subtle shadow change during hover makes the button feel tangibly lifted off the surface.
+</Tip>

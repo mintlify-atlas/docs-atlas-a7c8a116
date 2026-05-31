@@ -1,0 +1,192 @@
+---
+title: "Element Hierarchy and the Element Stack"
+sidebarTitle: "Hierarchy"
+description: "Understand how Paper builds its element tree each frame using Box, Row, and Column, how Enter() scopes children, and how to manage IDs safely in loops."
+---
+
+Paper organises its UI as a tree of elements. Every frame that tree is built from scratch: you call `Box`, `Row`, or `Column`, optionally step inside them with `Enter()`, and Paper assembles the parent-child relationships automatically through an internal stack. This page explains exactly how that stack works, what an `ElementHandle` is, and the tools available for managing identity in complex scenarios.
+
+## The Three Element Primitives
+
+All elements in Paper are created through three methods on `Paper`:
+
+| Method | What it creates |
+|--------|----------------|
+| `paper.Box(id)` | A generic container with no default layout direction (inherits `Column`) |
+| `paper.Row(id)` | A container that arranges its children horizontally |
+| `paper.Column(id)` | A container that arranges its children vertically |
+
+`Row` and `Column` are simply `Box` with `.LayoutType(LayoutType.Row)` or `.LayoutType(LayoutType.Column)` pre-applied. All three return an `ElementBuilder` you can chain style and event methods on.
+
+```csharp
+// A plain leaf element — no children
+paper.Box("MyButton")
+    .Size(120, 40)
+    .BackgroundColor(Color.ForestGreen)
+    .Rounded(8)
+    .OnClick(_ => Console.WriteLine("Clicked!"));
+
+// A horizontal container
+paper.Row("Toolbar")
+    .Height(48)
+    .BackgroundColor(Color.DarkGray);
+
+// A vertical container
+paper.Column("Sidebar")
+    .Width(200)
+    .BackgroundColor(Color.LightGray);
+```
+
+## Establishing Parent–Child Relationships with `Enter()`
+
+Calling `.Enter()` on an `ElementBuilder` returns an `IDisposable` that pushes the element onto the internal element stack. Any element created inside the `using` block is automatically added as a child of the entered element. When the `using` block ends, the element is popped off the stack.
+
+```csharp
+using (paper.Column("App")
+    .BackgroundColor(Color.White)
+    .Enter())
+{
+    // These three elements become children of "App"
+    using (paper.Row("Header").Height(60).Enter())
+    {
+        paper.Box("Logo").Size(40).BackgroundColor(Color.Blue);
+        paper.Box("Title").Width(paper.Stretch()).Text("My App", myFont);
+    }
+
+    using (paper.Row("Body").Height(paper.Stretch()).Enter())
+    {
+        paper.Box("Nav").Width(200).BackgroundColor(Color.LightGray);
+        paper.Box("Content").Width(paper.Stretch());
+    }
+}
+```
+
+<Tip>
+The `using` pattern mirrors how nesting works visually. Indentation level equals depth in the element tree.
+</Tip>
+
+## The Element Stack
+
+Internally, Paper maintains a `Stack<ElementHandle>` called `_elementStack`. Its top item is always accessible as `paper.CurrentParent`. When you call `paper.Box(...)`, the new element is immediately added as a child of `CurrentParent`. When `.Enter()` is called, that new element is pushed onto the stack so subsequent elements become its children.
+
+```
+Frame start:
+  Stack: [ Root ]          ← CurrentParent = Root
+
+After Column("App").Enter():
+  Stack: [ Root, App ]     ← CurrentParent = App
+
+After Row("Header").Enter():
+  Stack: [ Root, App, Header ] ← CurrentParent = Header
+
+End of Header's using block:
+  Stack: [ Root, App ]     ← CurrentParent = App again
+```
+
+<Info>
+The root element is always on the bottom of the stack and is never popped. It covers the full screen area and is the implicit parent of any top-level elements you create.
+</Info>
+
+## ElementHandle: a Lightweight Reference
+
+`ElementHandle` is a readonly struct that identifies a single element. It holds a reference to the owning `Paper` instance and an integer index into the element array. You can use it to access the element's layout data after the frame, pass it to storage APIs, or add custom render actions.
+
+```csharp
+// Capture the handle at declaration time
+ElementHandle myPanel;
+
+using (var builder = paper.Column("Panel").BackgroundColor(Color.Gray).Enter())
+{
+    myPanel = builder._handle;  // grab before the using block ends
+    paper.Box("Child").Size(50).BackgroundColor(Color.Blue);
+}
+
+// Use the handle to read layout data after EndFrame
+paper.OnEndOfFramePostLayout += () =>
+{
+    var rect = myPanel.Data.LayoutRect;
+    Console.WriteLine($"Panel is at {rect}");
+};
+```
+
+`ElementHandle.IsValid` returns `true` when the handle refers to a live element in the current frame's array. Accessing `handle.Data` on an invalid handle will throw.
+
+```csharp
+// Navigate upward through the tree
+ElementHandle parent = myPanel.GetParentHandle();
+if (parent.IsValid)
+    Console.WriteLine($"Parent ID: {parent.Data.ID}");
+```
+
+## Moving Elements to the Root with `MoveToRoot()`
+
+Popups, tooltips, and modals should render above all other content regardless of where they are declared in code. `MoveToRoot()` detaches the current element from its existing parent and re-attaches it as a direct child of the root element.
+
+```csharp
+using (paper.Column("Page").Enter())
+{
+    paper.Box("NormalContent").Height(200);
+
+    // This popup is declared inside "Page" but will render at root level
+    using (paper.Box("Popup")
+        .Size(300, 150)
+        .BackgroundColor(Color.White)
+        .Layer(Layer.Overlay)
+        .Enter())
+    {
+        paper.MoveToRoot();   // re-parent to root, renders on top of everything
+        paper.Box("PopupBody").Text("Hello from popup!", myFont);
+    }
+}
+```
+
+<Note>
+`MoveToRoot()` operates on `CurrentParent` at the point it is called — call it immediately after `.Enter()`, before adding children, so those children are scoped under the re-parented element.
+</Note>
+
+## Scoping IDs in Loops with `PushID` / `PopID`
+
+Element IDs are hashed from the string ID, the call-site line number, and the parent's ID. When you create elements inside a loop, multiple iterations execute the same line with the same string — producing duplicate hashes and a thrown exception.
+
+The solution is to either pass the loop index as `intID`:
+
+```csharp
+for (int i = 0; i < items.Count; i++)
+{
+    // intID differentiates each iteration
+    paper.Box("Item", i)
+        .Height(40)
+        .Text(items[i].Name, myFont);
+}
+```
+
+Or use `PushID` / `PopID` to create a new ID scope:
+
+```csharp
+foreach (var item in items)
+{
+    paper.PushID(item.UniqueId);   // push a scope unique to this item
+
+    paper.Box("Row")
+        .Height(40)
+        .Text(item.Name, myFont);
+
+    paper.Box("Delete")
+        .Size(24)
+        .OnClick(_ => RemoveItem(item));
+
+    paper.PopID();                 // restore the previous scope
+}
+```
+
+`PushID(string)` and `PushID(int)` both combine with the current top of the ID stack, so scopes nest correctly. Always pair every `PushID` with a `PopID`.
+
+<Warning>
+Forgetting `PopID` will corrupt all element IDs created after it in the same frame. If you see unexpected "Element already exists" errors, a missing `PopID` is the most likely cause.
+</Warning>
+
+## How the Tree Is Cleaned Up Each Frame
+
+At the start of `BeginFrame`, Paper calls `ClearElements()` and rebuilds the root. The `_createdElements` hash set tracks every element hash registered during the frame. At the end of `EndFrame`, `EndOfFrameCleanupStorage()` iterates over all stored per-element data and removes entries whose ID was not present in `_createdElements` — meaning the element was not declared this frame and therefore no longer exists.
+
+This automatic cleanup means you never need to explicitly destroy elements. Simply stop declaring them and their storage evaporates on the next frame.

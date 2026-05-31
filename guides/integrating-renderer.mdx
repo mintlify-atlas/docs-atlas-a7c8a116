@@ -1,0 +1,355 @@
+---
+title: "Integrating a Custom Renderer Backend for Paper"
+sidebarTitle: "Custom Renderer"
+description: "Implement ICanvasRenderer to connect Paper's vector drawing pipeline to any graphics API — OpenGL, DirectX, WebGL, Vulkan, Unity, or a game engine's own renderer."
+---
+
+Paper is intentionally decoupled from any specific graphics API. All rendering goes through `ICanvasRenderer`, a small interface that receives batched draw-call data from Prowl.Quill and submits it to whatever GPU backend you choose. This page explains the interface, shows how to wire it up, and points you to the three ready-to-run reference implementations in the repository.
+
+## When Do You Need a Custom Renderer?
+
+If you are using the provided OpenTK or Raylib samples you do not need to implement anything — those renderers are complete and production-quality. You only need to write your own `ICanvasRenderer` when:
+
+- You are embedding Paper in an **engine that manages its own render pipeline** (Unity, Godot, a custom engine).
+- You want to target a **graphics API** not yet covered (DirectX, Vulkan, Metal, WebGPU).
+- You need to **integrate Paper's draw calls** into an existing render graph or command buffer model.
+
+---
+
+## Reference Implementations
+
+Study these three samples before writing your own. They all implement the same interface against very different backends and between them cover the major patterns you will encounter.
+
+<CardGroup cols={3}>
+<Card title="OpenTK (OpenGL 4)" icon="code" href="#">
+`Samples/OpenTK/PaperRenderer.cs`  
+Full-featured OpenGL 4.3 renderer with a VAO/VBO pipeline, projection matrix, scissor, gradient brushes, and a dual-Kawase backdrop blur implementation.
+</Card>
+<Card title="Raylib" icon="code" href="#">
+`Samples/RaylibSample/RaylibCanvasRenderer.cs`  
+Under 500 lines. Uses Raylib's `Rlgl` low-level API to submit triangles directly. Demonstrates that the interface is simple enough for a minimal integration.
+</Card>
+<Card title="WebGL / WASM" icon="code" href="#">
+`Samples/WasmExample/WebGLCanvasRenderer.cs`  
+Bridges the .NET/WASM runtime to a JavaScript WebGL2 context through JS interop. Shows how to handle texture IDs as opaque tokens and batch vertex data across the boundary.
+</Card>
+</CardGroup>
+
+---
+
+## The ICanvasRenderer Interface
+
+Paper only calls three methods on your renderer, plus a texture lifecycle pair:
+
+```csharp
+public interface ICanvasRenderer
+{
+    // Create a new empty RGBA texture of the given dimensions.
+    // Return an opaque handle — Paper treats it as object and passes it back.
+    object CreateTexture(uint width, uint height);
+
+    // Return the dimensions of a previously created texture.
+    Int2 GetTextureSize(object texture);
+
+    // Upload a region of pixel data (RGBA 8-bit) into a texture.
+    void SetTextureData(object texture, IntRect bounds, byte[] data);
+
+    // Submit a completed frame's worth of draw calls to the GPU.
+    // canvas.Vertices and canvas.Indices hold the vertex/index buffers;
+    // drawCalls carries per-draw-call metadata (brush, scissor, texture, shader).
+    void RenderCalls(Canvas canvas, IReadOnlyList<DrawCall> drawCalls);
+
+    // Optional: return true if the backend can composite a blurred backdrop.
+    bool SupportsBackdropBlur { get; }
+}
+```
+
+<Info>
+`RenderCalls` is called once per `paper.EndFrame()`. All vertex and index data for the entire frame lives in `canvas.Vertices` and `canvas.Indices`. Each `DrawCall` in the list has an `ElementCount` telling you how many indices it consumes, starting from the offset left by the previous draw call.
+</Info>
+
+---
+
+## Step-by-Step: Implementing a Renderer
+
+<Steps>
+
+### Set Up the Shader Pipeline
+
+Paper produces anti-aliased geometry using a single fragment shader that handles flat fills, gradients, texture sampling, scissoring, and optional backdrop blur. The vertex format is 20 bytes per vertex:
+
+```
+offset  0: float x        (position)
+offset  4: float y
+offset  8: float u        (UV / AA params)
+offset 12: float v
+offset 16: ubyte r, g, b, a   (pre-multiplied colour)
+```
+
+Copy the GLSL source from `Samples/Common/CanvasShaderSource.cs` for OpenGL-based backends or from the inline string constants in `RaylibCanvasRenderer.cs`. The fragment shader expects these uniforms:
+
+```glsl
+uniform mat4  projection;       // orthographic: (0,w) x (0,h)
+uniform sampler2D texture0;     // font atlas / image texture
+uniform mat4  scissorMat;       // scissor transform
+uniform vec2  scissorExt;       // scissor half-extents
+uniform mat4  brushMat;         // gradient transform
+uniform int   brushType;        // 0=none, 1=linear, 2=radial, 3=box
+uniform vec4  brushColor1;
+uniform vec4  brushColor2;
+uniform vec4  brushParams;      // gradient geometry
+uniform vec2  brushParams2;     // corner radius + feather
+uniform mat4  brushTextureMat;  // texture image transform
+uniform float dpiScale;         // logical-to-pixel ratio
+```
+
+### Implement the Interface Methods
+
+```csharp
+public class MyRenderer : ICanvasRenderer
+{
+    public bool SupportsBackdropBlur => false; // enable once blur passes are ready
+
+    public object CreateTexture(uint width, uint height)
+    {
+        // Allocate a GPU texture and return an opaque handle.
+        // Example for a hypothetical API:
+        var tex = MyGfxApi.CreateTexture2D(width, height, Format.RGBA8);
+        return tex;
+    }
+
+    public Int2 GetTextureSize(object texture)
+    {
+        var tex = (MyTexture)texture;
+        return new Int2((int)tex.Width, (int)tex.Height);
+    }
+
+    public void SetTextureData(object texture, IntRect bounds, byte[] data)
+    {
+        var tex = (MyTexture)texture;
+        tex.UpdateRegion(bounds.Min.X, bounds.Min.Y,
+                         bounds.Size.X, bounds.Size.Y, data);
+    }
+
+    public void RenderCalls(Canvas canvas, IReadOnlyList<DrawCall> drawCalls)
+    {
+        if (drawCalls.Count == 0) return;
+
+        // 1. Upload vertex + index buffers to the GPU.
+        UploadGeometry(canvas.Vertices, canvas.Indices);
+
+        // 2. Configure shared render state (blend, depth-test, etc.).
+        SetBlendState(premultipliedAlpha: true);
+
+        // 3. Iterate draw calls.
+        int indexOffset = 0;
+        foreach (var dc in drawCalls)
+        {
+            BindTexture(dc.Texture ?? _whiteTexture);
+
+            if (dc.Shader != null)
+            {
+                // Custom shader path
+                UseShader((MyShader)dc.Shader);
+                ApplyCustomUniforms(dc.ShaderUniforms);
+            }
+            else
+            {
+                // Default Paper shader
+                UseShader(_paperShader);
+
+                // Scissor
+                dc.GetScissor(out var scissorMat, out var scissorExt);
+                SetUniform("scissorMat", scissorMat);
+                SetUniform("scissorExt", scissorExt);
+
+                // Gradient brush
+                SetUniform("brushType",   (int)dc.Brush.Type);
+                SetUniform("brushMat",    dc.Brush.BrushMatrix);
+                SetUniform("brushColor1", dc.Brush.Color1);
+                SetUniform("brushColor2", dc.Brush.Color2);
+                SetUniform("brushParams", new Float4(
+                    (float)dc.Brush.Point1.X, (float)dc.Brush.Point1.Y,
+                    (float)dc.Brush.Point2.X, (float)dc.Brush.Point2.Y));
+                SetUniform("brushParams2", new Float2(
+                    (float)dc.Brush.CornerRadii, (float)dc.Brush.Feather));
+                SetUniform("brushTextureMat", dc.Brush.TextureMatrix);
+                SetUniform("dpiScale",    (float)canvas.FramebufferScale);
+            }
+
+            DrawIndexed(indexOffset, dc.ElementCount);
+            indexOffset += dc.ElementCount;
+        }
+    }
+}
+```
+
+### Wire Up the Renderer with Paper
+
+Construct a `Paper` instance, passing your renderer, the initial viewport size, and a `FontAtlasSettings` describing how fonts should be rasterized.
+
+```csharp
+var renderer = new MyRenderer();
+renderer.Initialize(windowWidth, windowHeight);
+
+var fontAtlas = new Prowl.Quill.FontAtlasSettings(); // default settings
+var paper = new Paper(renderer, windowWidth, windowHeight, fontAtlas);
+```
+
+### Handle Resizes
+
+When the window dimensions change, notify both the renderer (so it rebuilds its projection matrix) and Paper (so it re-flows the layout).
+
+```csharp
+void OnWindowResize(int newWidth, int newHeight)
+{
+    renderer.UpdateProjection(newWidth, newHeight);   // your renderer method
+    paper.SetResolution(newWidth, newHeight);
+}
+```
+
+### Handle HiDPI / Retina Displays
+
+On high-DPI displays there is a gap between the logical window size (what Paper uses for layout) and the physical framebuffer size (what the GPU draws into). Set `DisplayFramebufferScale` so Paper rasterizes fonts at the right density.
+
+```csharp
+// On Retina macOS or with a 200% Windows DPI setting:
+paper.DisplayFramebufferScale = new Float2(2f, 2f);
+
+// Or pass dpiScale to BeginFrame each frame (sets X and Y simultaneously):
+float dpi = (float)framebufferWidth / logicalWidth;
+paper.BeginFrame(deltaTime, dpiScale: dpi);
+```
+
+Scale default style values (padding, border widths, etc.) proportionally with `ScaleAllSizes`. Call this **once** at startup, not every frame.
+
+```csharp
+paper.ScaleAllSizes(dpiScale);
+```
+
+</Steps>
+
+---
+
+## FontAtlasSettings
+
+`FontAtlasSettings` controls how Prowl.Quill allocates and updates the GPU font texture atlas. The defaults work for most applications, but you may want to adjust them when:
+
+- You are loading a large number of distinct fonts or sizes (increase atlas dimensions).
+- You need subpixel rendering or specific SDF parameters.
+- You are targeting memory-constrained hardware (reduce atlas size, limit glyph range).
+
+```csharp
+var fontAtlas = new Prowl.Quill.FontAtlasSettings
+{
+    // Atlas texture dimensions — must be power-of-two
+    Width  = 2048,
+    Height = 2048,
+    // … other settings exposed by FontAtlasSettings
+};
+
+var paper = new Paper(renderer, w, h, fontAtlas);
+```
+
+---
+
+## Loading Fonts
+
+Paper uses `FontFile` objects from `Prowl.Scribe`. Load font bytes from disk or an embedded resource and construct a `FontFile`:
+
+```csharp
+// From disk
+byte[] bytes = File.ReadAllBytes("path/to/Roboto-Regular.ttf");
+FontFile regularFont = new FontFile(bytes);
+
+// From an embedded resource stream
+using Stream stream = Assembly.GetExecutingAssembly()
+    .GetManifestResourceStream("MyApp.Resources.Roboto-Regular.ttf")!;
+FontFile regularFont = new FontFile(stream);
+```
+
+### Fallback Fonts
+
+Register fallback fonts so that characters absent from the primary font (e.g. emoji, CJK, icon fonts) are automatically sourced from a secondary glyph table:
+
+```csharp
+FontFile icons = new FontFile(File.ReadAllBytes("fa-solid-900.ttf"));
+paper.AddFallbackFont(icons);
+
+// Enumerate fonts registered on the host OS
+foreach (FontFile systemFont in paper.EnumerateSystemFonts())
+    paper.AddFallbackFont(systemFont);
+```
+
+---
+
+## Skeleton Implementation Reference
+
+The following is a minimal compilable skeleton that you can use as a starting point. Fill in the GPU API calls for your target backend.
+
+```csharp
+using Prowl.Quill;
+using Prowl.Vector;
+using Prowl.Vector.Geometry;
+
+public class SkeletonRenderer : ICanvasRenderer
+{
+    private object _whiteTexture;
+
+    public bool SupportsBackdropBlur => false;
+
+    public void Initialize(int width, int height)
+    {
+        // TODO: compile shader, create VAO/VBO, create default white 1×1 texture
+        _whiteTexture = CreateTexture(1, 1);
+        SetTextureData(_whiteTexture, new IntRect(0, 0, 1, 1),
+                       new byte[] { 255, 255, 255, 255 });
+        UpdateProjection(width, height);
+    }
+
+    public void UpdateProjection(int width, int height)
+    {
+        // TODO: rebuild orthographic projection matrix: (0,w)×(0,h)
+    }
+
+    // ── ICanvasRenderer ────────────────────────────────────────────────────
+
+    public object CreateTexture(uint width, uint height)
+    {
+        // TODO: return a GPU texture handle
+        throw new NotImplementedException();
+    }
+
+    public Int2 GetTextureSize(object texture)
+    {
+        // TODO: return (width, height) of the texture
+        throw new NotImplementedException();
+    }
+
+    public void SetTextureData(object texture, IntRect bounds, byte[] data)
+    {
+        // TODO: upload RGBA pixel data into the texture region
+        throw new NotImplementedException();
+    }
+
+    public void RenderCalls(Canvas canvas, IReadOnlyList<DrawCall> drawCalls)
+    {
+        if (drawCalls.Count == 0) return;
+
+        // 1. Upload canvas.Vertices and canvas.Indices to GPU buffers.
+        // 2. Set render state: premultiplied alpha blend, no depth test.
+        // 3. Bind Paper shader, set projection uniform.
+        // 4. For each DrawCall:
+        //    a. Bind dc.Texture (or _whiteTexture).
+        //    b. Set scissor uniforms via dc.GetScissor().
+        //    c. Set brush uniforms from dc.Brush.
+        //    d. Draw dc.ElementCount triangles from the running index offset.
+        throw new NotImplementedException();
+    }
+
+    public void Dispose()
+    {
+        // TODO: release GPU resources
+    }
+}
+```

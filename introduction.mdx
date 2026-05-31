@@ -1,0 +1,84 @@
+---
+title: "Prowl.Paper: Immediate-Mode UI Library for .NET"
+sidebarTitle: "Introduction"
+description: "Prowl.Paper is an open-source, MIT-licensed immediate-mode UI library for .NET, built for games, desktop apps, and the web with a fluent C# API."
+---
+
+Prowl.Paper is a powerful, open-source immediate-mode UI library written entirely in C#. Originally built to power the [Prowl Game Engine](https://github.com/ProwlEngine/Prowl), it is designed as a standalone package suitable for any .NET application — from desktop tools to real-time games and WebAssembly apps. It is distributed under the [MIT License](https://github.com/ProwlEngine/Prowl.Paper/blob/main/LICENSE.txt) and targets `net6.0` through `net10.0` as well as `netstandard2.1`, making it broadly compatible across the .NET ecosystem.
+
+## The Immediate-Mode Paradigm
+
+Traditional UI frameworks use a **retained-mode** model: you create widget objects, store references to them, and mutate their properties over time. Prowl.Paper follows the **immediate-mode GUI (IMGUI)** paradigm instead. Every frame, you declare your entire UI from scratch by calling functions — no persistent widget objects are maintained between frames.
+
+This approach has several practical benefits:
+
+- **Simplicity:** UI state lives in your own variables. There is nothing to synchronise between a widget tree and your application data.
+- **Reactivity:** Change a value and the UI reflects it automatically on the next frame — no observers, bindings, or update callbacks required.
+- **Debuggability:** Because the UI is rebuilt every frame, you can step through its construction in a debugger exactly as you would any other code.
+
+Here is a minimal example showing how direct the model is:
+
+```csharp
+// Create a simple button — everything is declared inline, every frame
+paper.Box("MyButton")
+    .Size(100)
+    .BackgroundColor(Color.ForestGreen)
+    .Rounded(8)
+    .Text(Text.Center("Click Me", myFont, Color.White))
+    .OnClick((rect) => Console.WriteLine("Button clicked!"));
+```
+
+No references to store. No event subscriptions to manage. If you want to animate the corner radius, pass an animated float directly:
+
+```csharp
+.Rounded(yourAnimatedFloat)
+```
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Layout System" icon="table-columns" href="https://github.com/ProwlEngine/Prowl.Paper">
+    Row and Column containers with Pixel, Percentage, Stretch, and Auto sizing units. Absolute positioning via `PositionType.SelfDirected`. Powered by the Morphorm layout engine.
+  </Card>
+  <Card title="Animation" icon="film" href="https://github.com/ProwlEngine/Prowl.Paper">
+    A built-in animation system with automatic per-property transitions and a large library of easing functions: Linear, SineInOut, ElasticOut, CubicIn, and many more.
+  </Card>
+  <Card title="State Styles" icon="palette" href="https://github.com/ProwlEngine/Prowl.Paper">
+    Fluent `.Hovered`, `.Active`, and `.If(condition)` style blocks let you declare state-dependent visuals inline. Styles are applied in declaration order for predictable precedence.
+  </Card>
+  <Card title="Vector Graphics" icon="pen-nib" href="https://github.com/ProwlEngine/Prowl.Paper">
+    Hardware-accelerated, anti-aliased vector drawing via Prowl.Quill. Supports MoveTo, LineTo, CurveTo, Fill, Stroke, box shadows, and linear, radial, and box gradients.
+  </Card>
+  <Card title="Text Rendering" icon="font" href="https://github.com/ProwlEngine/Prowl.Paper">
+    Full-featured text layout with alignment, wrapping, Markdown parsing, rich text with effects, and HiDPI-aware rasterisation. Fonts are managed through `FontAtlasSettings`.
+  </Card>
+  <Card title="Renderer Integration" icon="plug" href="https://github.com/ProwlEngine/Prowl.Paper">
+    Integrates with any rendering backend via the `ICanvasRenderer` interface. Reference implementations for OpenTK, Raylib, and WebGL/WebAssembly are provided in the repository.
+  </Card>
+</CardGroup>
+
+## Additional Capabilities
+
+Beyond the core feature set, Prowl.Paper also provides:
+
+- **Rich event handling** — `OnClick`, `OnHover`, `OnEnter`, `OnLeave`, `OnDragStart`, `OnDragging`, `OnDragEnd`, and `OnScroll`, with parent–child event bubbling.
+- **Transformations** — Scale, rotate, translate, and skew any element.
+- **Layer system** — Draw elements at independent Z-depth layers, including popups and modals promoted to root via `MoveToRoot()`.
+- **Scissoring** — Automatic clipping regions per element.
+- **Backdrop blur** — Frosted-glass effects backed by a dual Kawase blur pass (renderer-dependent).
+- **Keyboard navigation** — Built-in focus management and key-state forwarding.
+- **Per-element persistent storage** — `GetElementStorage` / `SetElementStorage` for stateful widgets without external dictionaries.
+
+## Cross-Platform Support
+
+Prowl.Paper runs on **Windows**, **Linux**, and **macOS**. The WebAssembly sample demonstrates it running entirely in the browser via .NET's WASM runtime. The library itself is renderer-agnostic — it produces a list of draw calls that your chosen backend submits to the GPU.
+
+## Dependencies
+
+Prowl.Paper depends on a single first-party library:
+
+- **[Prowl.Quill](https://github.com/ProwlEngine/Prowl.Quill)** — the vector-graphics canvas that backs all drawing operations.
+
+## License & Source
+
+Prowl.Paper is distributed under the **MIT License**. Source code, samples, and issue tracking are available on [GitHub](https://github.com/ProwlEngine/Prowl.Paper).

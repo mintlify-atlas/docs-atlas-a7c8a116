@@ -1,0 +1,458 @@
+---
+title: "ElementBuilder Text and TextField API Reference"
+sidebarTitle: "Text API"
+description: "Reference for text display, rich text, Markdown, text styling, alignment, wrapping, TextField, TextArea, and TextInputSettings on ElementBuilder."
+---
+
+Prowl.Paper handles text display and text input as first-class element capabilities. Static content is set directly on an element with `Text`, `RichText`, or `Markdown`; interactive editing is added with `TextField` or `TextArea`. All text styling properties (`FontSize`, `TextColor`, etc.) are inherited from `StyleSetterBase<T>` and interact correctly with state blocks and style templates.
+
+---
+
+## Text Display
+
+### Text
+
+```csharp
+public ElementBuilder Text(string text, FontFile font)
+```
+
+<ParamField path="text" type="string" required>
+  Plain text content to display. No markup is interpreted.
+</ParamField>
+<ParamField path="font" type="FontFile" required>
+  Font asset used to render the text.
+</ParamField>
+
+Renders static, unstyled text inside the element. Sizing, color, and alignment are controlled by the style properties described in [Text Styling](#text-styling).
+
+```csharp
+Paper.Element("heading")
+    .Text("Welcome to Prowl", myFont)
+    .FontSize(24f)
+    .TextColor(Color32.FromArgb(255, 220, 220, 240));
+```
+
+---
+
+### Markdown
+
+```csharp
+public ElementBuilder Markdown(
+    string text,
+    FontFile font,
+    FontFile bold,
+    FontFile italic,
+    FontFile boldItalic,
+    FontFile mono)
+```
+
+<ParamField path="text" type="string" required>Markdown-formatted text.</ParamField>
+<ParamField path="font" type="FontFile" required>Default font for body text.</ParamField>
+<ParamField path="bold" type="FontFile" required>Font for `**bold**` spans.</ParamField>
+<ParamField path="italic" type="FontFile" required>Font for `*italic*` spans.</ParamField>
+<ParamField path="boldItalic" type="FontFile" required>Font for `***bold-italic***` spans.</ParamField>
+<ParamField path="mono" type="FontFile" required>Font for `` `code` `` spans.</ParamField>
+
+Parses the text as Markdown and renders inline formatting. Block-level Markdown elements (headings, lists, code fences) are supported where the underlying Scribe renderer implements them.
+
+```csharp
+Paper.Element("readme")
+    .Width(UnitValue.StretchOne)
+    .Markdown(
+        "Hello **World** — visit `ProwlEngine` for more.",
+        regularFont, boldFont, italicFont, boldItalicFont, monoFont)
+    .FontSize(15f)
+    .Wrap(TextWrapMode.Wrap);
+```
+
+---
+
+### RichText
+
+```csharp
+public ElementBuilder RichText(
+    string text,
+    FontFile font,
+    FontFile bold,
+    FontFile italic,
+    FontFile boldItalic,
+    FontFile mono)
+```
+
+Renders tagged rich text. The laid-out result is **cached across frames** so that animation timers (typewriter reveal, wave, pulse) survive between frames. Call `Paper.ResetRichText` on the element's handle to replay animations from the beginning.
+
+**Supported inline tags:**
+
+| Category | Tags |
+|---|---|
+| Style | `<b>`, `<i>`, `<u>`, `<s>`, `<color=…>`, `<size=…>`, `<font=mono>` |
+| Link | `<link=…>` |
+| Animation | `<shake>`, `<wave>`, `<rainbow>`, `<pulse>`, `<fade>`, `<jitter>`, `<typewriter>` |
+
+```csharp
+Paper.Element("fancy-label")
+    .RichText(
+        "Score: <color=#FFD700><b><wave>9999</wave></b></color>",
+        regularFont, boldFont, italicFont, boldItalicFont, monoFont)
+    .FontSize(18f)
+    .Alignment(TextAlignment.MiddleCenter);
+```
+
+---
+
+### Alignment
+
+```csharp
+public ElementBuilder Alignment(TextAlignment mode)
+```
+
+<ParamField path="mode" type="TextAlignment" required>
+  Controls both the horizontal and vertical anchor of text within the element's content box.
+</ParamField>
+
+| Value | Position |
+|---|---|
+| `Left` | Top-left |
+| `Center` | Top-center |
+| `Right` | Top-right |
+| `MiddleLeft` | Vertically centered, left-aligned |
+| `MiddleCenter` | Fully centered |
+| `MiddleRight` | Vertically centered, right-aligned |
+| `BottomLeft` | Bottom-left |
+| `BottomCenter` | Bottom-center |
+| `BottomRight` | Bottom-right |
+
+```csharp
+Paper.Element("badge")
+    .Size(UnitValue.Pixels(64))
+    .Text("OK", uiFont)
+    .Alignment(TextAlignment.MiddleCenter);
+```
+
+---
+
+### Wrap
+
+```csharp
+public ElementBuilder Wrap(TextWrapMode mode)
+```
+
+<ParamField path="mode" type="TextWrapMode" required>
+  `TextWrapMode.NoWrap` — text overflows horizontally (default).  
+  `TextWrapMode.Wrap` — text wraps at the element's content width.
+</ParamField>
+
+```csharp
+Paper.Element("description")
+    .Width(UnitValue.Pixels(400))
+    .Text(longDescription, bodyFont)
+    .Wrap(TextWrapMode.Wrap)
+    .FontSize(14f);
+```
+
+---
+
+## Text Styling
+
+These properties are set on the element and affect all text rendered inside it. They cascade to children via the style inheritance system.
+
+### TextColor
+
+```csharp
+public ElementBuilder TextColor(Color color)
+```
+
+Sets the color of rendered glyphs. Applies to `Text`, `Markdown`, `RichText`, and uncolored spans inside tagged rich text.
+
+---
+
+### FontSize
+
+```csharp
+public ElementBuilder FontSize(float size)
+```
+
+<ParamField path="size" type="float" required>Glyph size in logical pixels.</ParamField>
+
+---
+
+### LetterSpacing
+
+```csharp
+public ElementBuilder LetterSpacing(float spacing)
+```
+
+<ParamField path="spacing" type="float" required>Extra horizontal space between glyphs in pixels. Can be negative to tighten tracking.</ParamField>
+
+---
+
+### WordSpacing
+
+```csharp
+public ElementBuilder WordSpacing(float spacing)
+```
+
+<ParamField path="spacing" type="float" required>Extra space added between words.</ParamField>
+
+---
+
+### LineHeight
+
+```csharp
+public ElementBuilder LineHeight(float height)
+```
+
+<ParamField path="height" type="float" required>Line height as a multiplier of `FontSize`. `1.0` = tight; `1.4` is a comfortable default for body copy.</ParamField>
+
+---
+
+### TabSize
+
+```csharp
+public ElementBuilder TabSize(int size)
+```
+
+<ParamField path="size" type="int" required>Number of spaces a tab character expands to. Default is typically 4.</ParamField>
+
+---
+
+## Text Input Controls
+
+### TextField
+
+Creates a **single-line** editable text control. The element that calls `TextField` becomes the input container — apply sizing, background, border, and padding to it as normal.
+
+**Overload 1 — full settings:**
+
+```csharp
+public ElementBuilder TextField(
+    string value,
+    TextInputSettings settings,
+    Action<string> onChange = null)
+```
+
+<ParamField path="value" type="string" required>
+  Current text value. The field reads this every frame when unfocused; while focused, internal state is authoritative (see `TextInputSettings.ForceValue` to override).
+</ParamField>
+<ParamField path="settings" type="TextInputSettings" required>
+  Struct controlling font, colors, placeholder, masking, filtering, and more (see below).
+</ParamField>
+<ParamField path="onChange" type="Action<string>">
+  Callback invoked with the updated string each time the value changes.
+</ParamField>
+
+**Overload 2 — simple parameters:**
+
+```csharp
+public ElementBuilder TextField(
+    string value,
+    FontFile font,
+    Action<string> onChange = null,
+    Color? textColor = null,
+    string placeholder = "",
+    Color? placeholderColor = null)
+```
+
+Use the simple overload for quick prototyping; switch to the settings overload for production controls that need masking, filtering, or `SelectAllOnFocus`.
+
+<CodeGroup>
+```csharp Simple overload
+string name = "";
+
+Paper.Element("name-field")
+    .Size(UnitValue.Pixels(240), UnitValue.Pixels(32))
+    .BackgroundColor(darkBg)
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(6))
+    .TextField(name, uiFont,
+        onChange: v => name = v,
+        placeholder: "Enter name…");
+```
+```csharp Settings overload
+string name = "";
+
+var settings = TextInputSettings.Default;
+settings.Font = uiFont;
+settings.Placeholder = "Enter name…";
+settings.MaxLength = 64;
+settings.SelectAllOnFocus = true;
+
+Paper.Element("name-field")
+    .Size(UnitValue.Pixels(240), UnitValue.Pixels(32))
+    .BackgroundColor(darkBg)
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(6))
+    .TextField(name, settings, v => name = v);
+```
+</CodeGroup>
+
+---
+
+### TextArea
+
+Creates a **multi-line** editable text control with vertical scrolling and optional word wrap.
+
+**Overload 1 — full settings:**
+
+```csharp
+public ElementBuilder TextArea(
+    string value,
+    TextInputSettings settings,
+    Action<string> onChange = null)
+```
+
+**Overload 2 — simple parameters:**
+
+```csharp
+public ElementBuilder TextArea(
+    string value,
+    FontFile font,
+    Action<string> onChange = null,
+    string placeholder = "",
+    Color? textColor = null,
+    Color? placeholderColor = null)
+```
+
+`TextArea` automatically enables `ContentSizer` for the inner text content so the element's height grows with its content when unconstrained. Give the element a fixed height and call `Clip()` to produce a scrollable box.
+
+```csharp
+string notes = "";
+
+Paper.Element("notes-area")
+    .Size(UnitValue.Pixels(400), UnitValue.Pixels(200))
+    .BackgroundColor(darkBg)
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(8))
+    .Clip()
+    .TextArea(notes, uiFont, v => notes = v, placeholder: "Write here…");
+```
+
+---
+
+## TextInputSettings
+
+`TextInputSettings` is a plain value struct. All fields have defaults provided by the static `Default` property.
+
+```csharp
+var settings = TextInputSettings.Default;
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Font` | `FontFile` | `null` | Font used to render and measure text inside the field. |
+| `TextColor` | `Color` | Near-white | Color of input text. |
+| `Placeholder` | `string` | `""` | Hint text shown when the field is empty and unfocused. |
+| `PlaceholderColor` | `Color` | Muted grey | Color of placeholder text. |
+| `ReadOnly` | `bool` | `false` | When `true`, the field displays text but rejects all edits. |
+| `MaxLength` | `int` | `0` | Maximum character count. `0` means no limit. |
+| `DoWrap` | `bool` | `true` | Multi-line only — `true` to wrap lines at the field width; `false` to scroll horizontally. |
+| `CharFilter` | `Func<char, string, bool>` | `null` | Return `true` to accept a character, `false` to reject it. Receives the incoming character and the current full value. |
+| `SelectAllOnFocus` | `bool` | `false` | Selects all text when the field gains focus. |
+| `MaskChar` | `char?` | `null` | When set, every visible character is replaced with this glyph for display. The underlying value is unchanged. Clipboard copy/cut is suppressed while masking. |
+| `ForceValue` | `string` | `null` | When non-null, overrides the internal value for the current frame regardless of focus state. Reset to `null` on subsequent frames. |
+| `ForceSelectAll` | `bool` | `false` | Companion to `ForceValue`: selects all text after a forced update, if the field is focused. |
+
+---
+
+## Examples
+
+### Password field
+
+Use `MaskChar` to hide characters and `MaxLength` to cap input:
+
+```csharp
+string password = "";
+
+var pwSettings = TextInputSettings.Default;
+pwSettings.Font       = uiFont;
+pwSettings.MaskChar   = '●';
+pwSettings.MaxLength  = 128;
+pwSettings.Placeholder = "Password";
+
+Paper.Element("pw-field")
+    .Size(UnitValue.Pixels(240), UnitValue.Pixels(32))
+    .BackgroundColor(darkBg)
+    .BorderColor(accentColor).BorderWidth(1f)
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(6))
+    .TextField(password, pwSettings, v => password = v);
+```
+
+<Tip>
+Clipboard copy and cut (`Ctrl+C` / `Ctrl+X`) are automatically suppressed when `MaskChar` is set, so masked content cannot leave the field via the clipboard.
+</Tip>
+
+---
+
+### Numeric-only field
+
+Use `CharFilter` to accept only digits and an optional decimal point:
+
+```csharp
+string numericValue = "0";
+
+var numSettings = TextInputSettings.Default;
+numSettings.Font = uiFont;
+numSettings.CharFilter = (ch, currentValue) =>
+    char.IsDigit(ch) || (ch == '.' && !currentValue.Contains('.'));
+
+Paper.Element("numeric-field")
+    .Size(UnitValue.Pixels(120), UnitValue.Pixels(32))
+    .BackgroundColor(darkBg)
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(6))
+    .TextField(numericValue, numSettings, v => numericValue = v);
+```
+
+---
+
+### Programmatic value override with ForceValue
+
+When you need to push a new value into a focused field from outside (e.g. an autocomplete suggestion), set `ForceValue` for exactly one frame:
+
+```csharp
+string query = "";
+bool applyAutocomplete = false;
+string autocompleteResult = "";
+
+var searchSettings = TextInputSettings.Default;
+searchSettings.Font = uiFont;
+searchSettings.Placeholder = "Search…";
+searchSettings.SelectAllOnFocus = true;
+
+if (applyAutocomplete)
+{
+    searchSettings.ForceValue     = autocompleteResult;
+    searchSettings.ForceSelectAll = false;  // place cursor at end, don't select
+    applyAutocomplete = false;              // clear flag — only force for one frame
+}
+
+Paper.Element("search-field")
+    .Size(UnitValue.Pixels(300), UnitValue.Pixels(32))
+    .BackgroundColor(darkBg)
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(6))
+    .TextField(query, searchSettings, v => query = v);
+```
+
+<Warning>
+Set `ForceValue` only on the frame you want to apply the change. On subsequent frames, leave it as `null`; otherwise the field's internal editing state is replaced every frame, breaking normal typing.
+</Warning>
+
+---
+
+### Read-only display field
+
+```csharp
+var roSettings = TextInputSettings.Default;
+roSettings.Font     = uiFont;
+roSettings.ReadOnly = true;
+roSettings.TextColor = Color32.FromArgb(200, 200, 200, 200);
+
+Paper.Element("status-display")
+    .Size(UnitValue.Pixels(200), UnitValue.Pixels(32))
+    .BackgroundColor(Color32.FromArgb(40, 255, 255, 255))
+    .Rounded(4f)
+    .Padding(UnitValue.Pixels(6))
+    .TextField(currentStatusText, roSettings);
+```

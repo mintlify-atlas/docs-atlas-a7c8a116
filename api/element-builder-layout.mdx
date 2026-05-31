@@ -1,0 +1,411 @@
+---
+title: "ElementBuilder Layout API: Size, Position, and Alignment"
+sidebarTitle: "Layout API"
+description: "Complete reference for sizing, positioning, margin, padding, child alignment, layout direction, visibility, clipping, and layer methods on ElementBuilder."
+---
+
+The layout API is the foundation of every Prowl.Paper UI. Every visual element begins its life with a set of sizing and positioning rules that the layout engine resolves once per frame, before any rendering occurs. All methods below are defined on `StyleSetterBase<T>` (inherited by `ElementBuilder`) or directly on `ElementBuilder`, and every one returns `ElementBuilder` for fluent chaining unless otherwise noted.
+
+---
+
+## Sizing
+
+These methods control how large an element is. Sizes are expressed as `UnitValue`, which can be a pixel amount, a percentage of the parent, a stretch factor, or `Auto`.
+
+### Size
+
+```csharp
+public ElementBuilder Size(UnitValue sizeUniform)
+public ElementBuilder Size(UnitValue width, UnitValue height)
+```
+
+Sets both width and height in one call. The single-argument form applies the same value to both axes.
+
+<CodeGroup>
+```csharp Uniform
+Paper.Element("box")
+    .Size(UnitValue.Pixels(120));      // 120×120 px
+```
+```csharp Per-axis
+Paper.Element("box")
+    .Size(UnitValue.Pixels(200), UnitValue.Pixels(80));
+```
+```csharp Stretch
+Paper.Element("fill")
+    .Size(UnitValue.StretchOne, UnitValue.Pixels(40)); // fills width, fixed height
+```
+</CodeGroup>
+
+---
+
+### Width / Height
+
+```csharp
+public ElementBuilder Width(UnitValue width)
+public ElementBuilder Height(UnitValue height)
+```
+
+Set a single dimension independently.
+
+---
+
+### Min / Max constraints
+
+```csharp
+public ElementBuilder MinWidth(UnitValue minWidth)
+public ElementBuilder MaxWidth(UnitValue maxWidth)
+public ElementBuilder MinHeight(UnitValue minHeight)
+public ElementBuilder MaxHeight(UnitValue maxHeight)
+```
+
+Clamp the resolved dimension to a floor or ceiling. Particularly useful when combining `Stretch` sizing with a maximum pixel budget.
+
+```csharp
+Paper.Element("sidebar")
+    .Width(UnitValue.Stretch(0.3f))   // 30% of parent
+    .MaxWidth(UnitValue.Pixels(320)); // but never wider than 320 px
+```
+
+---
+
+### AspectRatio
+
+```csharp
+public ElementBuilder AspectRatio(float ratio)
+```
+
+<ParamField path="ratio" type="float" required>
+  Width divided by height. For example `16f/9f` for widescreen.
+</ParamField>
+
+Locks the element to the given width-to-height ratio. The layout engine satisfies this constraint after resolving the primary dimension.
+
+---
+
+### ContentSizer
+
+```csharp
+public ElementBuilder ContentSizer(Func<float?, float?, (float, float)?> sizer)
+public ElementBuilder ContentSizer(float width, float height)
+public ElementBuilder ClearContentSizer()
+```
+
+Provides a custom sizing callback for elements whose natural size is driven by content (text blocks, images, custom controls). The engine calls `sizer(maxWidth, maxHeight)` during layout; either constraint may be `null` when unconstrained. Return `null` from the callback if sizing is impossible under the given constraints.
+
+<ParamField path="sizer" type="Func<float?, float?, (float, float)?>">
+  A delegate that receives optional width/height constraints and returns the preferred `(width, height)` tuple, or `null`.
+</ParamField>
+
+<CodeGroup>
+```csharp Text sizing
+Paper.Element("label")
+    .ContentSizer((maxW, maxH) => {
+        var size = paper.MeasureText("Hello!", settings);
+        return (size.X + 16, size.Y + 8);   // add 8 px padding each side
+    });
+```
+```csharp Fixed size shorthand
+Paper.Element("icon")
+    .ContentSizer(24f, 24f);  // always 24×24 px
+```
+```csharp Aspect-ratio sizing
+Paper.Element("video")
+    .ContentSizer((maxW, maxH) => {
+        const float ar = 16f / 9f;
+        if (maxW.HasValue) return (maxW.Value, maxW.Value / ar);
+        if (maxH.HasValue) return (maxH.Value * ar, maxH.Value);
+        return (320f, 180f);
+    });
+```
+</CodeGroup>
+
+`ClearContentSizer()` removes a previously registered callback and restores default sizing behaviour.
+
+---
+
+## Positioning
+
+These methods set where an element appears within its parent's coordinate space. They map directly to the layout engine's `Left`, `Right`, `Top`, and `Bottom` style properties. Their behaviour depends on `PositionType` (see below).
+
+### Position
+
+```csharp
+public ElementBuilder Position(UnitValue left, UnitValue top)
+```
+
+Convenience for setting `Left` and `Top` together.
+
+---
+
+### Left / Right / Top / Bottom
+
+```csharp
+public ElementBuilder Left(UnitValue left)
+public ElementBuilder Right(UnitValue right)
+public ElementBuilder Top(UnitValue top)
+public ElementBuilder Bottom(UnitValue bottom)
+```
+
+Set one edge at a time. For `ParentDirected` elements these act as **margin** (spacing around the element inside the parent's flow). For `SelfDirected` elements they act as **absolute offsets** from the corresponding parent edge.
+
+---
+
+### Min / Max position constraints
+
+```csharp
+public ElementBuilder MinLeft(UnitValue minLeft)
+public ElementBuilder MaxLeft(UnitValue maxLeft)
+public ElementBuilder MinRight(UnitValue minRight)
+public ElementBuilder MaxRight(UnitValue maxRight)
+public ElementBuilder MinTop(UnitValue minTop)
+public ElementBuilder MaxTop(UnitValue maxTop)
+public ElementBuilder MinBottom(UnitValue minBottom)
+public ElementBuilder MaxBottom(UnitValue maxBottom)
+```
+
+Clamp the resolved edge offset to a range. Useful for constraining drag-to-reposition panels.
+
+---
+
+## Margin
+
+Margin is the outer spacing around an element. Under the hood, setting margin on a child sets that child's `Left`/`Right`/`Top`/`Bottom` style properties. When these are `Auto`, the parent's `ChildLeft`/`ChildRight`/`ChildTop`/`ChildBottom`/`RowBetween`/`ColBetween` defaults fill in — which is how alignment recipes work.
+
+```csharp
+public ElementBuilder Margin(UnitValue all)
+public ElementBuilder Margin(UnitValue horizontal, UnitValue vertical)
+public ElementBuilder Margin(UnitValue left, UnitValue right, UnitValue top, UnitValue bottom)
+```
+
+<CodeGroup>
+```csharp Uniform
+Paper.Element("card").Margin(UnitValue.Pixels(8));
+```
+```csharp Horizontal / Vertical
+Paper.Element("card").Margin(UnitValue.Pixels(16), UnitValue.Pixels(8));
+```
+```csharp Per-side
+Paper.Element("card")
+    .Margin(UnitValue.Pixels(0), UnitValue.Pixels(0),
+            UnitValue.Pixels(12), UnitValue.Pixels(4)); // left, right, top, bottom
+```
+</CodeGroup>
+
+<Note>
+Setting a concrete pixel margin on a side opts that side out of the parent's default `ChildLeft`/`ChildRight`/`ChildTop`/`ChildBottom` fill-in. Use `UnitValue.Auto` explicitly to re-enable parent-side defaulting.
+</Note>
+
+---
+
+## Padding
+
+Padding is the inner inset on a *parent* element. It shrinks the content area that children are placed into, and an auto-sized parent grows to include the padding in its outer size.
+
+```csharp
+public ElementBuilder Padding(UnitValue all)
+public ElementBuilder Padding(UnitValue horizontal, UnitValue vertical)
+public ElementBuilder Padding(UnitValue left, UnitValue right, UnitValue top, UnitValue bottom)
+public ElementBuilder PaddingLeft(UnitValue paddingLeft)
+public ElementBuilder PaddingRight(UnitValue paddingRight)
+public ElementBuilder PaddingTop(UnitValue paddingTop)
+public ElementBuilder PaddingBottom(UnitValue paddingBottom)
+```
+
+```csharp
+Paper.Element("panel")
+    .Padding(UnitValue.Pixels(16))          // 16 px on every side
+    .PaddingTop(UnitValue.Pixels(24));      // override just the top
+```
+
+---
+
+## Child Alignment (parent-side)
+
+These methods are called on a **parent** element and set the default spacing slots *around* and *between* its children. By combining `Stretch` values in different slots you express the full range of CSS `justify-content` behaviour without any extra wrapper element.
+
+```csharp
+public ElementBuilder ChildLeft()                       // defaults to StretchOne
+public ElementBuilder ChildLeft(UnitValue childLeft)
+public ElementBuilder ChildRight()
+public ElementBuilder ChildRight(UnitValue childRight)
+public ElementBuilder ChildTop()
+public ElementBuilder ChildTop(UnitValue childTop)
+public ElementBuilder ChildBottom()
+public ElementBuilder ChildBottom(UnitValue childBottom)
+public ElementBuilder RowBetween()                      // defaults to StretchOne
+public ElementBuilder RowBetween(UnitValue rowBetween)
+public ElementBuilder ColBetween()
+public ElementBuilder ColBetween(UnitValue colBetween)
+```
+
+<Info>
+`RowBetween` fills the gap between siblings in a **column-direction** container (i.e., between rows). `ColBetween` fills the gap between siblings in a **row-direction** container (i.e., between columns). The naming follows the axis being separated, not the container direction.
+</Info>
+
+### Alignment recipe table
+
+The following recipes are set on the **parent** element. Children use default (`Auto`) margins.
+
+| CSS equivalent | Row container recipe | Column container recipe |
+|---|---|---|
+| `justify-content: flex-start` | *(default — no call needed)* | *(default — no call needed)* |
+| `justify-content: flex-end` | `.ChildLeft()` | `.ChildTop()` |
+| `justify-content: center` | `.ChildLeft().ChildRight()` | `.ChildTop().ChildBottom()` |
+| `justify-content: space-between` | `.ColBetween()` | `.RowBetween()` |
+| `justify-content: space-around` | `.ChildLeft().ChildRight().ColBetween()` | `.ChildTop().ChildBottom().RowBetween()` |
+
+<CodeGroup>
+```csharp Center (row)
+using (Paper.Element("toolbar").LayoutType(LayoutType.Row)
+    .ChildLeft().ChildRight()
+    .Enter())
+{
+    // children are centered horizontally
+    Paper.Element("btn-a").Size(UnitValue.Pixels(80), UnitValue.Pixels(32));
+    Paper.Element("btn-b").Size(UnitValue.Pixels(80), UnitValue.Pixels(32));
+}
+```
+```csharp Space-between (column)
+using (Paper.Element("list")
+    .LayoutType(LayoutType.Column)
+    .RowBetween()
+    .Enter())
+{
+    Paper.Element("item-a").Height(UnitValue.Pixels(40)).Width(UnitValue.StretchOne);
+    Paper.Element("item-b").Height(UnitValue.Pixels(40)).Width(UnitValue.StretchOne);
+    Paper.Element("item-c").Height(UnitValue.Pixels(40)).Width(UnitValue.StretchOne);
+}
+```
+</CodeGroup>
+
+---
+
+## Layout Type
+
+```csharp
+public ElementBuilder LayoutType(LayoutType layoutType)
+```
+
+<ParamField path="layoutType" type="LayoutType" required>
+  `LayoutType.Row` — children flow left-to-right.  
+  `LayoutType.Column` — children flow top-to-bottom (default).
+</ParamField>
+
+Sets the primary axis along which direct children are arranged.
+
+---
+
+## Position Type
+
+```csharp
+public ElementBuilder PositionType(PositionType positionType)
+```
+
+<ParamField path="positionType" type="PositionType" required>
+  `PositionType.ParentDirected` — the element participates in the parent's normal flow (default).  
+  `PositionType.SelfDirected` — the element is removed from flow and positioned absolutely relative to its parent.
+</ParamField>
+
+```csharp
+// Floating tooltip anchored to the top-right of its parent
+Paper.Element("tooltip")
+    .PositionType(PositionType.SelfDirected)
+    .Right(UnitValue.Pixels(0))
+    .Top(UnitValue.Pixels(0));
+```
+
+---
+
+## Visibility and Clipping
+
+### Visible
+
+```csharp
+public ElementBuilder Visible(bool visible)
+```
+
+<ParamField path="visible" type="bool" required>
+  `true` to render the element; `false` to hide it. A hidden element still occupies layout space.
+</ParamField>
+
+---
+
+### Clip
+
+```csharp
+public ElementBuilder Clip()
+```
+
+Enables a scissor rectangle so that children cannot paint outside this element's bounds. Indispensable for scroll views and overflow containers.
+
+---
+
+### ClampToScreen
+
+```csharp
+public ElementBuilder ClampToScreen()
+```
+
+Keeps the element's final screen rectangle fully within the viewport after layout. Children move with it. Works for both `ParentDirected` and `SelfDirected` elements. Ideal for context menus or drag-repositioned panels that should never go off-screen.
+
+---
+
+## Layer
+
+```csharp
+public ElementBuilder Layer(int layer)
+```
+
+<ParamField path="layer" type="int" required>
+  Rendering layer. Higher values draw on top and are hit-tested first. Use the named constants in `Layer` for the three built-in tiers, or any integer for fine-grained control.
+</ParamField>
+
+| Constant | Value | Intended use |
+|---|---|---|
+| `Layer.Base` | `0` | Normal UI content |
+| `Layer.Overlay` | `100` | Modals, dropdowns |
+| `Layer.Topmost` | `200` | Tooltips, popovers |
+
+```csharp
+Paper.Element("modal-backdrop")
+    .Layer(Layer.Overlay)
+    .Size(UnitValue.StretchOne, UnitValue.StretchOne);
+
+Paper.Element("tooltip")
+    .Layer(Layer.Topmost);
+
+// Fine-grained: wedge between Overlay and Topmost
+Paper.Element("notification")
+    .Layer(Layer.Overlay + 10);
+```
+
+---
+
+## Scope — Enter()
+
+```csharp
+public IDisposable Enter()
+```
+
+Opens a parent scope so that elements created inside the `using` block become children of this element. Dispose (end of `using`) automatically pops the scope.
+
+```csharp
+using (Paper.Element("card")
+    .Size(UnitValue.Pixels(300), UnitValue.Pixels(200))
+    .Padding(UnitValue.Pixels(16))
+    .LayoutType(LayoutType.Column)
+    .Enter())
+{
+    Paper.Element("title")
+        .Height(UnitValue.Pixels(24))
+        .Width(UnitValue.StretchOne);
+
+    Paper.Element("body")
+        .Width(UnitValue.StretchOne)
+        .Height(UnitValue.StretchOne);
+}
+```
+
+<Warning>
+Calling `Enter()` on an element that is already the current parent throws `InvalidOperationException`. You cannot nest a scope inside itself.
+</Warning>

@@ -1,0 +1,444 @@
+---
+title: "ElementBuilder Style API: Colors, Effects, and Transforms"
+sidebarTitle: "Style API"
+description: "Reference for background, border, rounding, shadows, backdrop blur, 2D transforms, state-driven styles, transitions, images, and custom shaders on ElementBuilder."
+---
+
+The style API controls the visual appearance of every element: fill colors, gradients, images, borders, rounded corners, drop shadows, backdrop blur, and 2D transforms. Most methods are defined on `StyleSetterBase<T>` and flow through to the element's internal style dictionary. All methods return `ElementBuilder` for chaining unless otherwise noted.
+
+---
+
+## Background
+
+### BackgroundColor
+
+```csharp
+public ElementBuilder BackgroundColor(Color color)
+```
+
+<ParamField path="color" type="Color" required>
+  Solid fill color applied behind content. Alpha is respected.
+</ParamField>
+
+```csharp
+Paper.Element("panel").BackgroundColor(Color32.FromArgb(255, 30, 30, 46));
+```
+
+---
+
+### BackgroundLinearGradient
+
+```csharp
+public ElementBuilder BackgroundLinearGradient(
+    float x1, float y1,
+    float x2, float y2,
+    Color color1, Color color2)
+```
+
+<ParamField path="x1, y1" type="float" required>Start point of the gradient in element-local coordinates.</ParamField>
+<ParamField path="x2, y2" type="float" required>End point of the gradient.</ParamField>
+<ParamField path="color1" type="Color" required>Color at the start point.</ParamField>
+<ParamField path="color2" type="Color" required>Color at the end point.</ParamField>
+
+```csharp
+Paper.Element("header")
+    .BackgroundLinearGradient(0, 0, 0, 60,
+        Color32.FromArgb(255, 80, 80, 200),
+        Color32.FromArgb(0,   80, 80, 200));   // fade to transparent
+```
+
+---
+
+### BackgroundRadialGradient
+
+```csharp
+public ElementBuilder BackgroundRadialGradient(
+    float centerX, float centerY,
+    float innerRadius, float outerRadius,
+    Color innerColor, Color outerColor)
+```
+
+<ParamField path="centerX, centerY" type="float" required>Center of the gradient circle.</ParamField>
+<ParamField path="innerRadius" type="float" required>Radius where `innerColor` is fully applied.</ParamField>
+<ParamField path="outerRadius" type="float" required>Radius where `outerColor` is fully applied.</ParamField>
+<ParamField path="innerColor" type="Color" required>Color at the center.</ParamField>
+<ParamField path="outerColor" type="Color" required>Color at the edge.</ParamField>
+
+---
+
+### BackgroundBoxGradient
+
+```csharp
+public ElementBuilder BackgroundBoxGradient(
+    float centerX, float centerY,
+    float width, float height,
+    float radius, float feather,
+    Color innerColor, Color outerColor)
+```
+
+A rounded-rectangle gradient — useful for "inner glow" or bevelled panel effects. `radius` rounds the box corners; `feather` controls the softness of the transition zone.
+
+---
+
+### ClearBackgroundGradient
+
+```csharp
+public ElementBuilder ClearBackgroundGradient()
+```
+
+Removes any gradient set with the three methods above, restoring a flat `BackgroundColor` fill.
+
+---
+
+### BackgroundImage / ClearBackgroundImage
+
+```csharp
+public ElementBuilder BackgroundImage(object texture)
+public ElementBuilder ClearBackgroundImage()
+```
+
+<ParamField path="texture" type="object" required>
+  A texture handle created by the renderer backend (e.g. from `Paper.CreateTexture`). The image is stretched to fill the element rect; use the `Image()` method for fit/fill scale modes.
+</ParamField>
+
+---
+
+## Border
+
+```csharp
+public ElementBuilder BorderColor(Color color)
+public ElementBuilder BorderWidth(float width)
+```
+
+<ParamField path="color" type="Color" required>Stroke color drawn along the inner edge of the element.</ParamField>
+<ParamField path="width" type="float" required>Border thickness in pixels.</ParamField>
+
+```csharp
+Paper.Element("input")
+    .BorderColor(Color32.FromArgb(255, 100, 120, 200))
+    .BorderWidth(1.5f);
+```
+
+---
+
+## Corner Rounding
+
+### Rounded (uniform)
+
+```csharp
+public ElementBuilder Rounded(float radius)
+```
+
+Applies the same corner radius to all four corners.
+
+---
+
+### Rounded (per-corner)
+
+```csharp
+public ElementBuilder Rounded(float tlRadius, float trRadius, float brRadius, float blRadius)
+```
+
+<ParamField path="tlRadius" type="float" required>Top-left corner radius.</ParamField>
+<ParamField path="trRadius" type="float" required>Top-right corner radius.</ParamField>
+<ParamField path="brRadius" type="float" required>Bottom-right corner radius.</ParamField>
+<ParamField path="blRadius" type="float" required>Bottom-left corner radius.</ParamField>
+
+---
+
+### Side shorthands
+
+```csharp
+public ElementBuilder RoundedTop(float radius)      // top-left + top-right
+public ElementBuilder RoundedBottom(float radius)   // bottom-left + bottom-right
+public ElementBuilder RoundedLeft(float radius)     // top-left + bottom-left
+public ElementBuilder RoundedRight(float radius)    // top-right + bottom-right
+```
+
+```csharp
+// Tab shape: only top corners rounded
+Paper.Element("tab").RoundedTop(6f);
+
+// Pill button
+Paper.Element("pill-btn")
+    .Height(UnitValue.Pixels(32))
+    .Rounded(16f);
+```
+
+---
+
+## Effects
+
+### BoxShadow
+
+```csharp
+public ElementBuilder BoxShadow(float offsetX, float offsetY, float blur, float spread, Color color)
+public ElementBuilder BoxShadow(BoxShadow shadow)
+```
+
+<ParamField path="offsetX" type="float" required>Horizontal shadow offset in pixels (positive = right).</ParamField>
+<ParamField path="offsetY" type="float" required>Vertical shadow offset in pixels (positive = down).</ParamField>
+<ParamField path="blur" type="float" required>Shadow blur radius.</ParamField>
+<ParamField path="spread" type="float" required>Shadow expansion before blur is applied.</ParamField>
+<ParamField path="color" type="Color" required>Shadow color, including alpha.</ParamField>
+<ParamField path="shadow" type="BoxShadow">Pre-constructed `BoxShadow` struct.</ParamField>
+
+```csharp
+Paper.Element("card")
+    .BoxShadow(0, 4, 12, 0, Color32.FromArgb(80, 0, 0, 0));
+```
+
+---
+
+### BackdropBlur
+
+```csharp
+public ElementBuilder BackdropBlur(float radius)
+```
+
+<ParamField path="radius" type="float" required>
+  Blur radius in pixels. `0` disables the effect. Requires a renderer backend that supports backdrop blur.
+</ParamField>
+
+Blurs everything rendered *behind* this element — the "frosted glass" effect. Combine with a semi-transparent `BackgroundColor` for a tinted frost.
+
+```csharp
+Paper.Element("frosted-panel")
+    .BackdropBlur(20f)
+    .BackgroundColor(Color32.FromArgb(120, 255, 255, 255));
+```
+
+---
+
+## Transforms
+
+All transform methods are composited by the renderer into the element's final transform matrix. `TransformOrigin` sets the pivot point around which rotation and scale are applied (defaults to the element's top-left corner).
+
+```csharp
+public ElementBuilder TranslateX(float x)
+public ElementBuilder TranslateY(float y)
+public ElementBuilder Translate(float x, float y)
+
+public ElementBuilder ScaleX(float x)
+public ElementBuilder ScaleY(float y)
+public ElementBuilder Scale(float scale)              // uniform
+public ElementBuilder Scale(float x, float y)
+
+public ElementBuilder Rotate(float angleInDegrees)
+
+public ElementBuilder SkewX(float angle)
+public ElementBuilder SkewY(float angle)
+public ElementBuilder Skew(float x, float y)
+
+public ElementBuilder TransformOrigin(float x, float y)
+public ElementBuilder Transform(Transform2D transform) // raw matrix
+```
+
+<CodeGroup>
+```csharp Spin animation
+float t = (float)(paper.Time % (2 * Math.PI));
+Paper.Element("spinner")
+    .Size(UnitValue.Pixels(48))
+    .TransformOrigin(24f, 24f)
+    .Rotate(t * 57.2958f);     // radians → degrees
+```
+```csharp Hover scale
+Paper.Element("card")
+    .Size(UnitValue.Pixels(160), UnitValue.Pixels(100))
+    .TransformOrigin(80f, 50f)
+    .Hovered
+        .Scale(1.04f)
+    .End();
+```
+</CodeGroup>
+
+---
+
+## State-Driven Style Blocks
+
+State blocks let you apply a set of style properties only when the element is in a particular interactive state. Open the block with a state property accessor, chain style calls, then **always** close with `.End()` to return to `ElementBuilder`.
+
+```csharp
+// State accessors — each returns StateDrivenStyle
+public StateDrivenStyle Normal  { get; }   // always applied
+public StateDrivenStyle Hovered { get; }   // while cursor is over the element
+public StateDrivenStyle Active  { get; }   // while mouse button is held down
+public StateDrivenStyle Focused { get; }   // while the element has keyboard focus
+
+// Conditional accessor
+public StateDrivenStyle If(bool condition)
+
+// Close the block
+// StateDrivenStyle.End() : ElementBuilder
+```
+
+<Warning>
+Every state block **must** be closed with `.End()`. Forgetting `.End()` causes subsequent method calls to silently target the `StateDrivenStyle` object instead of the `ElementBuilder`, leading to properties being discarded.
+</Warning>
+
+```csharp
+Paper.Element("button")
+    .BackgroundColor(Color32.FromArgb(255, 50, 100, 200))
+    .Rounded(6f)
+    .Hovered
+        .BackgroundColor(Color32.FromArgb(255, 70, 120, 220))
+        .BoxShadow(0, 2, 8, 0, Color32.FromArgb(80, 0, 0, 0))
+    .End()
+    .Active
+        .BackgroundColor(Color32.FromArgb(255, 40, 80, 170))
+        .TranslateY(1f)
+    .End()
+    .Focused
+        .BorderColor(Color32.FromArgb(255, 100, 160, 255))
+        .BorderWidth(2f)
+    .End();
+```
+
+`StateDrivenStyle` exposes the same background, border, rounding, shadow, transform, and transition methods as `ElementBuilder` — they simply no-op when the state condition is false, so there is no runtime cost when inactive.
+
+---
+
+## Style Application
+
+### Style (template)
+
+```csharp
+public ElementBuilder Style(StyleTemplate style)
+```
+
+Applies all properties from a pre-built `StyleTemplate` to this element. Templates are useful for sharing a visual "theme" across many elements without repeating property chains.
+
+```csharp
+var dangerButton = new StyleTemplate()
+    .BackgroundColor(Color32.FromArgb(255, 200, 50, 50))
+    .Rounded(6f)
+    .BorderColor(Color32.FromArgb(255, 240, 80, 80))
+    .BorderWidth(1f);
+
+Paper.Element("delete-btn").Style(dangerButton);
+```
+
+---
+
+### Style (named)
+
+```csharp
+public ElementBuilder Style(params string[] names)
+public ElementBuilder StyleIf(bool condition, params string[] names)
+```
+
+Looks up one or more named styles registered with `Paper` and applies them along with any state-appropriate variants (e.g. a `:hover` sub-style). `StyleIf` is a conditional shorthand — it does nothing when `condition` is `false`.
+
+```csharp
+Paper.Element("menu-item")
+    .Style("base-item", "dark-theme")
+    .StyleIf(isSelected, "selected");
+```
+
+---
+
+### InheritStyle
+
+```csharp
+public ElementBuilder InheritStyle(ElementHandle? element = null)
+```
+
+<ParamField path="element" type="ElementHandle?" default="null">
+  Source element to inherit from. When `null`, inherits from the direct parent in the current element stack.
+</ParamField>
+
+Sets the element's style parent, so any unset properties cascade down from the source. Useful for consistent text color or font size across a container's descendants.
+
+---
+
+## Transitions
+
+```csharp
+public ElementBuilder Transition(GuiProp property, float duration, Func<float, float> easing = null)
+```
+
+<ParamField path="property" type="GuiProp" required>
+  The style property to animate when its value changes (e.g. `GuiProp.BackgroundColor`, `GuiProp.ScaleX`).
+</ParamField>
+<ParamField path="duration" type="float" required>
+  Animation duration in seconds.
+</ParamField>
+<ParamField path="easing" type="Func<float, float>">
+  Optional easing function that maps `[0, 1]` → `[0, 1]`. Defaults to linear when `null`.
+</ParamField>
+
+```csharp
+Paper.Element("button")
+    .BackgroundColor(Color32.FromArgb(255, 50, 100, 200))
+    .Transition(GuiProp.BackgroundColor, 0.15f)
+    .Hovered
+        .BackgroundColor(Color32.FromArgb(255, 80, 140, 240))
+    .End();
+```
+
+Transitions survive state changes across frames — the engine interpolates from the current rendered value to the target whenever the property changes.
+
+---
+
+## Images
+
+```csharp
+public ElementBuilder Image(
+    object texture,
+    Color32? tint = null,
+    float rotation = 0f,
+    Float2? pivot = null,
+    ImageScaleMode scaleMode = ImageScaleMode.Stretch)
+```
+
+<ParamField path="texture" type="object" required>Renderer texture handle.</ParamField>
+<ParamField path="tint" type="Color32?" default="null">Optional tint. Defaults to white (no tint).</ParamField>
+<ParamField path="rotation" type="float" default="0">Rotation in degrees.</ParamField>
+<ParamField path="pivot" type="Float2?" default="(0.5, 0.5)">Normalized pivot for rotation. Defaults to center.</ParamField>
+<ParamField path="scaleMode" type="ImageScaleMode" default="Stretch">
+  `Stretch` — ignores aspect ratio.  
+  `Fit` — letterboxed, preserves aspect ratio.  
+  `Fill` — cropped, preserves aspect ratio.
+</ParamField>
+
+<CodeGroup>
+```csharp Avatar (Fill, circular)
+Paper.Element("avatar")
+    .Size(UnitValue.Pixels(48))
+    .Rounded(24f)
+    .Clip()
+    .Image(avatarTexture, scaleMode: ImageScaleMode.Fill);
+```
+```csharp Rotating icon
+float angle = (float)(paper.Time * 90); // 90°/s
+Paper.Element("loading-icon")
+    .Size(UnitValue.Pixels(32))
+    .Image(spinnerTexture, rotation: angle);
+```
+</CodeGroup>
+
+---
+
+## Custom Shader
+
+```csharp
+public ElementBuilder CustomShader(
+    object shader,
+    Action<ShaderUniforms>? setupUniforms = null)
+```
+
+<ParamField path="shader" type="object" required>Backend-specific shader object.</ParamField>
+<ParamField path="setupUniforms" type="Action<ShaderUniforms>?" default="null">
+  Optional callback invoked each frame to push per-frame uniform values before the element's rect is drawn.
+</ParamField>
+
+Replaces the default background fill with a custom GLSL (or equivalent) shader. The shader receives the element's bounding rect as the draw area. Use `setupUniforms` to pass time, resolution, or any other per-element data.
+
+```csharp
+Paper.Element("shader-panel")
+    .Size(UnitValue.Pixels(256), UnitValue.Pixels(256))
+    .CustomShader(noiseShader, uniforms => {
+        uniforms.Set("u_time", (float)paper.Time);
+        uniforms.Set("u_resolution", new Float2(256, 256));
+    });
+```

@@ -1,0 +1,473 @@
+---
+title: "ElementBuilder Event API: Click, Drag, Scroll, and Focus"
+sidebarTitle: "Events API"
+description: "Full reference for mouse, drag, scroll, hover, keyboard, and focus event handlers on ElementBuilder, including event bubbling and generic closure-free overloads."
+---
+
+Prowl.Paper's event system connects raw input to your application logic through typed callbacks registered directly on the element being built. Every `On…` method adds a delegate to the element's event slot and returns `ElementBuilder` so the chain continues uninterrupted. Events fired by the input system automatically bubble up the element tree unless propagation is explicitly stopped.
+
+---
+
+## Event Bubbling
+
+When the input system fires an event on an element, it first dispatches to that element's registered handlers, then walks up the parent chain repeating the process until it reaches the root or propagation is stopped. The event's `Source`, `ElementRect`, `RelativePosition`, and `NormalizedPosition` fields are **retargeted** to each ancestor as bubbling proceeds — `Source` always refers to the element currently receiving the event, not the original target.
+
+You can stop bubbling from inside a handler by calling `event.StopPropagation()`, or from the element declaration with `StopEventPropagation()` (see [Behavior Modifiers](#behavior-modifiers)).
+
+---
+
+## Base Event Fields (ElementEvent)
+
+All pointer-based events inherit from `ElementEvent` and expose these fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Source` | `ElementHandle` | The element currently handling this event (retargeted on bubble). |
+| `ElementRect` | `Rect` | Layout rectangle of `Source` in screen coordinates. |
+| `PointerPosition` | `Float2` | Raw cursor position in screen coordinates. |
+| `RelativePosition` | `Float2` | Cursor offset from the element's top-left corner. |
+| `NormalizedPosition` | `Float2` | Cursor position normalized to `[0, 1]` within the element. |
+| `IsPropagationStopped` | `bool` | `true` after `StopPropagation()` has been called. |
+
+---
+
+## Generic Closure-Free Overloads
+
+Every `On…` method has a generic overload that accepts a captured value of type `T`:
+
+```csharp
+// Standard overload
+public ElementBuilder OnClick(Action<ClickEvent> handler)
+
+// Generic overload
+public ElementBuilder OnClick<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+The generic form avoids a heap allocation that a closure would otherwise cause. Instead of capturing `myValue` in a lambda, you pass it as `capturedValue` and receive it as the first argument of the handler. This matters in frame-rate-sensitive code where `OnClick` is called every frame.
+
+```csharp
+// ❌ Allocates a closure every frame
+Paper.Element("item").OnClick(e => HandleClick(myItem, e));
+
+// ✅ Zero closure allocation
+Paper.Element("item").OnClick(myItem, (item, e) => HandleClick(item, e));
+```
+
+This pattern is available on every event method listed below.
+
+---
+
+## Mouse Events
+
+All mouse events carry the fields of `ElementEvent` plus those listed individually.
+
+### OnClick
+
+```csharp
+public ElementBuilder OnClick(Action<ClickEvent> handler)
+public ElementBuilder OnClick<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+Fires when the primary mouse button is pressed **and released** over the element. Additional `ClickEvent` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Button` | `PaperMouseBtn` | Which mouse button triggered the event. |
+| `Phase` | `ClickPhase` | Always `ClickPhase.Click` for `OnClick` handlers. |
+
+```csharp
+Paper.Element("btn")
+    .OnClick(e => Console.WriteLine($"Clicked at {e.RelativePosition}"));
+```
+
+---
+
+### OnPress
+
+```csharp
+public ElementBuilder OnPress(Action<ClickEvent> handler)
+public ElementBuilder OnPress<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+Fires on the frame the mouse button first goes down over the element (`ClickPhase.Press`).
+
+---
+
+### OnHeld
+
+```csharp
+public ElementBuilder OnHeld(Action<ClickEvent> handler)
+public ElementBuilder OnHeld<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+Fires every frame the mouse button remains held down over the element (`ClickPhase.Held`). Use this for continuous actions like holding a "spin up" button.
+
+---
+
+### OnRelease
+
+```csharp
+public ElementBuilder OnRelease(Action<ClickEvent> handler)
+public ElementBuilder OnRelease<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+Fires when the mouse button is released after being pressed on this element (`ClickPhase.Release`). Unlike `OnClick`, this fires even if the cursor has moved outside the element.
+
+---
+
+### OnDoubleClick
+
+```csharp
+public ElementBuilder OnDoubleClick(Action<ClickEvent> handler)
+public ElementBuilder OnDoubleClick<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+Fires when two clicks occur within the system double-click threshold (`ClickPhase.DoubleClick`).
+
+---
+
+### OnRightClick
+
+```csharp
+public ElementBuilder OnRightClick(Action<ClickEvent> handler)
+public ElementBuilder OnRightClick<T>(T capturedValue, Action<T, ClickEvent> handler)
+```
+
+Fires when the secondary (right) mouse button is clicked over the element (`ClickPhase.RightClick`).
+
+```csharp
+Paper.Element("list-item")
+    .OnClick(e  => Select(item))
+    .OnRightClick(e => ShowContextMenu(item, e.PointerPosition));
+```
+
+---
+
+## Drag Events
+
+Drag events add motion-specific data on top of `ElementEvent`.
+
+| Field | Type | Description |
+|---|---|---|
+| `StartPosition` | `Float2` | Screen position where the drag began. |
+| `RelativePosition` | `Float2` | Current cursor position relative to the element's top-left (inherited from `ElementEvent`). |
+| `Delta` | `Float2` | Movement since the previous frame. |
+| `TotalDelta` | `Float2` | Total movement since `DragPhase.Start`. |
+| `ElementRect` | `Rect` | Element bounds at the time of the event (inherited from `ElementEvent`). |
+| `Phase` | `DragPhase` | `Start`, `Dragging`, or `End`. |
+
+### OnDragStart
+
+```csharp
+public ElementBuilder OnDragStart(Action<DragEvent> handler)
+public ElementBuilder OnDragStart<T>(T capturedValue, Action<T, DragEvent> handler)
+```
+
+Fires once on the first frame the cursor moves while the button is held on this element.
+
+---
+
+### OnDragging
+
+```csharp
+public ElementBuilder OnDragging(Action<DragEvent> handler)
+public ElementBuilder OnDragging<T>(T capturedValue, Action<T, DragEvent> handler)
+```
+
+Fires every frame while the drag is active. Use `Delta` for frame-relative movement (e.g. repositioning a panel).
+
+---
+
+### OnDragEnd
+
+```csharp
+public ElementBuilder OnDragEnd(Action<DragEvent> handler)
+public ElementBuilder OnDragEnd<T>(T capturedValue, Action<T, DragEvent> handler)
+```
+
+Fires once when the mouse button is released after a drag. `TotalDelta` holds the full displacement for the whole gesture.
+
+```csharp
+float panelX = 100f, panelY = 100f;
+
+Paper.Element("panel")
+    .PositionType(PositionType.SelfDirected)
+    .Left(UnitValue.Pixels(panelX))
+    .Top(UnitValue.Pixels(panelY))
+    .OnDragging(e => {
+        panelX += e.Delta.X;
+        panelY += e.Delta.Y;
+    });
+```
+
+---
+
+## Scroll Events
+
+`ScrollEvent` inherits from `ElementEvent` and adds:
+
+| Field | Type | Description |
+|---|---|---|
+| `Delta` | `float` | Signed scroll amount. Positive = scroll up / away from user. |
+| `RelativePosition` | `Float2` | Cursor position relative to the element top-left (inherited). |
+
+### OnScroll
+
+```csharp
+public ElementBuilder OnScroll(Action<ScrollEvent> handler)
+public ElementBuilder OnScroll<T>(T capturedValue, Action<T, ScrollEvent> handler)
+```
+
+```csharp
+float scrollOffset = 0f;
+
+Paper.Element("scroll-container")
+    .Clip()
+    .OnScroll(e => scrollOffset -= e.Delta * 20f);
+```
+
+---
+
+## Hover Events
+
+Hover events use the base `ElementEvent` type (all pointer fields available).
+
+### OnHover
+
+```csharp
+public ElementBuilder OnHover(Action<ElementEvent> handler)
+public ElementBuilder OnHover<T>(T capturedValue, Action<T, ElementEvent> handler)
+```
+
+Fires every frame the cursor is over the element. Use `RelativePosition` or `NormalizedPosition` to track cursor location within the element.
+
+---
+
+### OnEnter
+
+```csharp
+public ElementBuilder OnEnter(Action<ElementEvent> handler)
+public ElementBuilder OnEnter<T>(T capturedValue, Action<T, ElementEvent> handler)
+```
+
+Fires once on the frame the cursor first enters the element's bounds.
+
+---
+
+### OnLeave
+
+```csharp
+public ElementBuilder OnLeave(Action<ElementEvent> handler)
+public ElementBuilder OnLeave<T>(T capturedValue, Action<T, ElementEvent> handler)
+```
+
+Fires once on the frame the cursor exits the element's bounds.
+
+```csharp
+Paper.Element("tooltip-trigger")
+    .OnEnter(_ => showTooltip = true)
+    .OnLeave(_ => showTooltip = false);
+```
+
+---
+
+## Keyboard Events
+
+Keyboard events are delivered only to the **focused** element (and its ancestors via bubbling).
+
+### OnKeyPressed
+
+```csharp
+public ElementBuilder OnKeyPressed(Action<KeyEvent> handler)
+public ElementBuilder OnKeyPressed<T>(T capturedValue, Action<T, KeyEvent> handler)
+```
+
+`KeyEvent` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Source` | `ElementHandle` | Element receiving the event. |
+| `Key` | `PaperKey` | The key that was pressed. |
+| `IsRepeat` | `bool` | `true` if this is an OS key-repeat event (held key). |
+
+```csharp
+Paper.Element("hotkey-zone")
+    .OnKeyPressed(e => {
+        if (e.Key == PaperKey.Escape) CloseDialog();
+        if (e.Key == PaperKey.Enter)  Submit();
+    });
+```
+
+---
+
+### OnTextInput
+
+```csharp
+public ElementBuilder OnTextInput(Action<TextInputEvent> handler)
+public ElementBuilder OnTextInput<T>(T capturedValue, Action<T, TextInputEvent> handler)
+```
+
+`TextInputEvent` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Source` | `ElementHandle` | Element receiving the event. |
+| `Character` | `char` | The Unicode character produced by the key press, after IME processing. |
+
+<Note>
+`OnTextInput` receives the **composed character**, not the raw key. This is the correct event for any text-entry use case. Use `OnKeyPressed` only for non-text actions (navigation keys, shortcuts, etc.).
+</Note>
+
+---
+
+### OnFocusChange
+
+```csharp
+public ElementBuilder OnFocusChange(Action<FocusEvent> handler)
+public ElementBuilder OnFocusChange<T>(T capturedValue, Action<T, FocusEvent> handler)
+```
+
+`FocusEvent` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Source` | `ElementHandle` | Element whose focus state changed. |
+| `IsFocused` | `bool` | `true` when the element gained focus; `false` when it lost it. |
+
+```csharp
+Paper.Element("search-field")
+    .OnFocusChange(e => {
+        if (e.IsFocused) ExpandSearchBar();
+        else CollapseSearchBar();
+    });
+```
+
+---
+
+## Post-Layout Callbacks
+
+Post-layout callbacks run **after** the layout engine has resolved all sizes and positions, giving you access to the final `Rect` for drawing or measurement.
+
+### OnPostLayout
+
+```csharp
+public ElementBuilder OnPostLayout(Action<ElementHandle, Rect> handler)
+public ElementBuilder OnPostLayout<T>(T capturedValue, Action<T, ElementHandle, Rect> handler)
+```
+
+<ParamField path="handler" type="Action<ElementHandle, Rect>" required>
+  Invoked with the resolved element handle and its final screen-space `Rect`.
+</ParamField>
+
+```csharp
+Paper.Element("measured-box")
+    .Width(UnitValue.StretchOne)
+    .OnPostLayout((handle, rect) => {
+        Console.WriteLine($"Final width: {rect.Size.X}");
+    });
+```
+
+The generic overload avoids closure allocation:
+
+```csharp
+Paper.Element("item")
+    .OnPostLayout(myData, (data, handle, rect) => Render(data, rect));
+```
+
+---
+
+## Behavior Modifiers
+
+These methods change how the element participates in the input system rather than registering a callback.
+
+### IsNotFocusable
+
+```csharp
+public ElementBuilder IsNotFocusable()
+```
+
+Prevents the element from ever receiving keyboard focus. Clicks still work; the element simply cannot be focused via Tab or pointer.
+
+---
+
+### IsNotInteractable
+
+```csharp
+public ElementBuilder IsNotInteractable()
+```
+
+Makes the element completely transparent to mouse and touch input. Hover, click, drag, and scroll events pass through to whatever is underneath.
+
+---
+
+### StopEventPropagation
+
+```csharp
+public ElementBuilder StopEventPropagation()
+```
+
+Prevents **all** events on this element from bubbling to its ancestors. Equivalent to calling `event.StopPropagation()` inside every handler, but declared at build time. Useful for modal panels or context menus that should not accidentally trigger parent interactions.
+
+---
+
+### HookToParent
+
+```csharp
+public ElementBuilder HookToParent()
+```
+
+Links this element's interaction states (hovered, active, focused, dragging) to its parent's states. When the parent is hovered the hooked child is also considered hovered and receives the same events. This enables complex hit areas where a child element logically acts as part of the parent.
+
+---
+
+### TabIndex
+
+```csharp
+public ElementBuilder TabIndex(int index)
+```
+
+<ParamField path="index" type="int" required>
+  Tab order. Elements are focused in ascending order when the user presses Tab. Use `-1` (default) to exclude the element from Tab navigation.
+</ParamField>
+
+```csharp
+Paper.Element("field-username").TabIndex(0);
+Paper.Element("field-password").TabIndex(1);
+Paper.Element("btn-submit").TabIndex(2);
+```
+
+---
+
+## Complete Example
+
+The following example builds a draggable, closeable notification panel that demonstrates mouse events, keyboard events, event bubbling prevention, and post-layout measurement all in one element tree.
+
+```csharp
+float notifX = 20f, notifY = 20f;
+bool notifVisible = true;
+
+if (notifVisible)
+{
+    using (Paper.Element("notification")
+        .PositionType(PositionType.SelfDirected)
+        .Layer(Layer.Overlay)
+        .Left(UnitValue.Pixels(notifX))
+        .Top(UnitValue.Pixels(notifY))
+        .Size(UnitValue.Pixels(320), UnitValue.Pixels(80))
+        .Rounded(8f)
+        .BackgroundColor(Color32.FromArgb(240, 30, 30, 46))
+        .StopEventPropagation()                          // don't bubble clicks to the world
+        .OnDragging(e => { notifX += e.Delta.X; notifY += e.Delta.Y; })
+        .OnPostLayout((_, rect) => Console.WriteLine($"Notif at {rect.Min}"))
+        .Enter())
+    {
+        Paper.Element("close-btn")
+            .PositionType(PositionType.SelfDirected)
+            .Right(UnitValue.Pixels(8))
+            .Top(UnitValue.Pixels(8))
+            .Size(UnitValue.Pixels(20))
+            .Rounded(10f)
+            .OnClick(_ => notifVisible = false);
+    }
+}
+```

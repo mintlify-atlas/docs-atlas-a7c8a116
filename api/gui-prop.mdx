@@ -1,0 +1,394 @@
+---
+title: "GuiProp Enum: All Animatable Style Properties"
+sidebarTitle: "GuiProp"
+description: "Complete reference for the GuiProp enum — every animatable style property in Prowl.Paper, with default values, value types, and related layout enums."
+---
+
+`GuiProp` is the central enum that names every style property Prowl.Paper can animate or transition. Whenever you call `.Transition(GuiProp.X, duration)` or set a property on an element, you reference a `GuiProp` value. The engine stores one typed `object` per property per element and interpolates between them each frame using the appropriate typed lerp. Default values are applied automatically when a property has never been set; they are listed in each section below.
+
+## Visual properties
+
+These properties control the appearance of the element's background, border, and effects.
+
+### `BackgroundColor`
+
+<ParamField path="BackgroundColor" type="Color" default="Color.Transparent">
+  The solid fill color of the element's background rectangle. Animated via HSV interpolation so hue rotates naturally. If both `BackgroundColor` and `BackgroundGradient` are set, the gradient takes precedence in the renderer.
+</ParamField>
+
+### `BackgroundGradient`
+
+<ParamField path="BackgroundGradient" type="Gradient" default="Gradient.None">
+  A `Gradient` struct (Linear, Radial, or Box) painted over the background rectangle. Set to `Gradient.None` to disable. See the `Gradient` struct and `GradientType` enum below.
+</ParamField>
+
+### `BorderColor`
+
+<ParamField path="BorderColor" type="Color" default="Color.Transparent">
+  Color of the element's border stroke. Has no visual effect when `BorderWidth` is `0`.
+</ParamField>
+
+### `BorderWidth`
+
+<ParamField path="BorderWidth" type="float" default="0.0f">
+  Pixel width of the border stroke drawn inside the element's rect. A value of `0` renders no border.
+</ParamField>
+
+### `Rounded`
+
+<ParamField path="Rounded" type="Float4" default="Float4(0, 0, 0, 0)">
+  Corner radii in pixels as `(topLeft, topRight, bottomRight, bottomLeft)`. Use a uniform value for all corners or set individual components for asymmetric rounding.
+</ParamField>
+
+### `BoxShadow`
+
+<ParamField path="BoxShadow" type="BoxShadow" default="BoxShadow.None">
+  Drop shadow applied behind the element. The `BoxShadow` struct holds `OffsetX`, `OffsetY`, `Blur`, `Spread`, and `Color` fields. Set to `BoxShadow.None` for no shadow.
+</ParamField>
+
+### `BackdropBlur`
+
+<ParamField path="BackdropBlur" type="float" default="0.0f">
+  Gaussian blur radius applied to content rendered *behind* this element, creating a frosted-glass effect. A value of `0` disables the blur.
+</ParamField>
+
+---
+
+## Layout — sizing
+
+These properties govern how large an element is. All use `UnitValue` which supports pixels, percentage, stretch, and auto units.
+
+### Core size
+
+<ParamField path="Width" type="UnitValue" default="UnitValue.Stretch()">
+  The element's width. Defaults to stretch, so an element fills its parent's available width by default.
+</ParamField>
+
+<ParamField path="Height" type="UnitValue" default="UnitValue.Stretch()">
+  The element's height. Defaults to stretch, so an element fills its parent's available height by default.
+</ParamField>
+
+<ParamField path="AspectRatio" type="float" default="-1.0f">
+  Locks the width-to-height ratio. A value of `-1` disables aspect-ratio enforcement. When set (e.g. `1.777f` for 16:9), the layout engine adjusts whichever axis is not explicitly constrained.
+</ParamField>
+
+### Size constraints
+
+<ParamField path="MinWidth" type="UnitValue" default="UnitValue.Pixels(0)">
+  Minimum width clamp applied after the main width resolves.
+</ParamField>
+
+<ParamField path="MaxWidth" type="UnitValue" default="UnitValue.Pixels(float.MaxValue)">
+  Maximum width clamp. Defaults to unconstrained.
+</ParamField>
+
+<ParamField path="MinHeight" type="UnitValue" default="UnitValue.Pixels(0)">
+  Minimum height clamp applied after the main height resolves.
+</ParamField>
+
+<ParamField path="MaxHeight" type="UnitValue" default="UnitValue.Pixels(float.MaxValue)">
+  Maximum height clamp. Defaults to unconstrained.
+</ParamField>
+
+---
+
+## Layout — positioning
+
+These properties control where an element sits relative to its parent or layout flow. All use `UnitValue`.
+
+<ParamField path="Left" type="UnitValue" default="UnitValue.Auto">
+  Distance from the parent's left edge. `Auto` lets the parent layout algorithm position the element.
+</ParamField>
+
+<ParamField path="Right" type="UnitValue" default="UnitValue.Auto">
+  Distance from the parent's right edge.
+</ParamField>
+
+<ParamField path="Top" type="UnitValue" default="UnitValue.Auto">
+  Distance from the parent's top edge.
+</ParamField>
+
+<ParamField path="Bottom" type="UnitValue" default="UnitValue.Auto">
+  Distance from the parent's bottom edge.
+</ParamField>
+
+### Position clamps
+
+Each edge also has `Min` and `Max` variants that clamp the computed position:
+
+| Property | Default |
+|---|---|
+| `MinLeft` / `MaxLeft` | `Pixels(float.MinValue)` / `Pixels(float.MaxValue)` |
+| `MinRight` / `MaxRight` | `Pixels(float.MinValue)` / `Pixels(float.MaxValue)` |
+| `MinTop` / `MaxTop` | `Pixels(float.MinValue)` / `Pixels(float.MaxValue)` |
+| `MinBottom` / `MaxBottom` | `Pixels(float.MinValue)` / `Pixels(float.MaxValue)` |
+
+---
+
+## Layout — child alignment
+
+These properties are set on the **parent** element and control how its children are positioned within the parent's bounds.
+
+<ParamField path="ChildLeft" type="UnitValue" default="UnitValue.Auto">
+  Space inserted to the left of each child. `Auto` distributes the horizontal spacing automatically.
+</ParamField>
+
+<ParamField path="ChildRight" type="UnitValue" default="UnitValue.Auto">
+  Space inserted to the right of each child.
+</ParamField>
+
+<ParamField path="ChildTop" type="UnitValue" default="UnitValue.Auto">
+  Space inserted above each child.
+</ParamField>
+
+<ParamField path="ChildBottom" type="UnitValue" default="UnitValue.Auto">
+  Space inserted below each child.
+</ParamField>
+
+<ParamField path="RowBetween" type="UnitValue" default="UnitValue.Auto">
+  Gap inserted **between** children along the row (horizontal) axis. Similar to CSS `column-gap`.
+</ParamField>
+
+<ParamField path="ColBetween" type="UnitValue" default="UnitValue.Auto">
+  Gap inserted **between** children along the column (vertical) axis. Similar to CSS `row-gap`.
+</ParamField>
+
+---
+
+## Layout — padding
+
+Padding insets the content area on the parent's interior. Children are placed inside the padded rect.
+
+<ParamField path="PaddingLeft" type="UnitValue" default="UnitValue.Pixels(0)">
+  Left-side inset applied to the parent's content area.
+</ParamField>
+
+<ParamField path="PaddingRight" type="UnitValue" default="UnitValue.Pixels(0)">
+  Right-side inset.
+</ParamField>
+
+<ParamField path="PaddingTop" type="UnitValue" default="UnitValue.Pixels(0)">
+  Top-side inset.
+</ParamField>
+
+<ParamField path="PaddingBottom" type="UnitValue" default="UnitValue.Pixels(0)">
+  Bottom-side inset.
+</ParamField>
+
+---
+
+## Transform properties
+
+Transform properties apply a 2D affine transform to the rendered element **after** layout. They do not affect sibling layout. All transforms combine through a `TransformBuilder` in the order: translate → rotate → scale → skew → custom.
+
+<ParamField path="TranslateX" type="float" default="0.0f">
+  Horizontal translation in pixels applied post-layout.
+</ParamField>
+
+<ParamField path="TranslateY" type="float" default="0.0f">
+  Vertical translation in pixels applied post-layout.
+</ParamField>
+
+<ParamField path="ScaleX" type="float" default="1.0f">
+  Horizontal scale factor. `1.0` = no scaling, `2.0` = double width.
+</ParamField>
+
+<ParamField path="ScaleY" type="float" default="1.0f">
+  Vertical scale factor.
+</ParamField>
+
+<ParamField path="Rotate" type="float" default="0.0f">
+  Rotation angle in **degrees**. Positive values rotate clockwise.
+</ParamField>
+
+<ParamField path="OriginX" type="float" default="0.5f">
+  Normalized X position of the transform origin within the element. `0` = left edge, `0.5` = center (default), `1` = right edge.
+</ParamField>
+
+<ParamField path="OriginY" type="float" default="0.5f">
+  Normalized Y position of the transform origin. `0` = top, `0.5` = center (default), `1` = bottom.
+</ParamField>
+
+<ParamField path="SkewX" type="float" default="0.0f">
+  Horizontal skew angle in degrees.
+</ParamField>
+
+<ParamField path="SkewY" type="float" default="0.0f">
+  Vertical skew angle in degrees.
+</ParamField>
+
+<ParamField path="Transform" type="Transform2D" default="Transform2D.Identity">
+  An additional custom `Transform2D` matrix applied on top of the individual transform properties above.
+</ParamField>
+
+<Tip>
+  Transforms are pivot-relative. Set `OriginX`/`OriginY` before animating `Rotate` or `ScaleX`/`ScaleY` to control the pivot point — for example, set both to `0.5f` (the default) for center-pivot scaling, or `0f` / `0f` for top-left corner rotation.
+</Tip>
+
+---
+
+## Image properties
+
+<ParamField path="BackgroundImage" type="object?" default="null">
+  An image resource to render as the element's background. The concrete type depends on your renderer integration. `null` disables the background image. Combine with `ImageScaleMode` to control how the image fits its rect.
+</ParamField>
+
+---
+
+## Text properties
+
+<ParamField path="TextColor" type="Color" default="Color.White">
+  Color applied to all text rendered within the element.
+</ParamField>
+
+<ParamField path="FontSize" type="float" default="16.0f">
+  Font size in pixels.
+</ParamField>
+
+<ParamField path="LineHeight" type="float" default="1.0f">
+  Multiplier applied to the font's natural line height. `1.0` = normal, `1.5` = 150% leading.
+</ParamField>
+
+<ParamField path="LetterSpacing" type="float" default="0.0f">
+  Additional pixel spacing inserted between individual glyphs.
+</ParamField>
+
+<ParamField path="WordSpacing" type="float" default="0.0f">
+  Additional pixel spacing inserted between words (i.e. after space characters).
+</ParamField>
+
+<ParamField path="TabSize" type="int" default="4">
+  Number of spaces a tab character is equivalent to for layout purposes.
+</ParamField>
+
+---
+
+## Related enums
+
+### `LayoutType`
+
+Controls the direction children are stacked within a container:
+
+| Value | Description |
+|---|---|
+| `LayoutType.Row` | Children arranged horizontally, left to right |
+| `LayoutType.Column` | Children arranged vertically, top to bottom |
+
+```csharp
+element.LayoutType(LayoutType.Row);
+```
+
+### `PositionType`
+
+Controls whether an element participates in the parent's flow or positions itself independently:
+
+| Value | Description |
+|---|---|
+| `PositionType.ParentDirected` | Position determined by the parent layout (similar to CSS `relative`) |
+| `PositionType.SelfDirected` | Element uses its own `Left`/`Top`/etc. coordinates (similar to CSS `absolute`) |
+
+### `TextAlignment`
+
+Nine-point alignment for text within a text element:
+
+| Value | Description |
+|---|---|
+| `Left` | Top-left |
+| `Center` | Top-center |
+| `Right` | Top-right |
+| `MiddleLeft` | Vertically centered, left |
+| `MiddleCenter` | Fully centered |
+| `MiddleRight` | Vertically centered, right |
+| `BottomLeft` | Bottom-left |
+| `BottomCenter` | Bottom-center |
+| `BottomRight` | Bottom-right |
+
+### `GradientType`
+
+Specifies which gradient algorithm the `Gradient` struct uses:
+
+| Value | Description |
+|---|---|
+| `None` | No gradient (default) |
+| `Linear` | Linear gradient between two points |
+| `Radial` | Radial gradient from a center point outward |
+| `Box` | Box (rounded-rectangle) gradient |
+
+### `ImageScaleMode`
+
+Controls how a `BackgroundImage` is scaled to fill the element's rectangle:
+
+| Value | Description |
+|---|---|
+| `Stretch` | Stretches to fill, ignoring aspect ratio |
+| `Fit` | Scales uniformly to fit inside, preserving aspect ratio (may leave empty space) |
+| `Fill` | Scales uniformly to cover the entire rect, preserving aspect ratio (may crop) |
+
+### `Layer` (static class)
+
+Named integer constants for the rendering layer system. Higher layer numbers render on top and receive input first. The constants are spaced by 100 so you can insert custom layers between them without renumbering:
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `Layer.Base` | `0` | Default layer for all normal elements |
+| `Layer.Overlay` | `100` | Modals, dropdowns — sits above base content |
+| `Layer.Topmost` | `200` | Tooltips, popovers — sits above everything |
+
+```csharp
+// Custom layer between Base and Overlay
+element.Layer(Layer.Base + 50);
+
+// Modal dialog on the Overlay layer
+dialog.Layer(Layer.Overlay);
+```
+
+<Note>
+  `Layer` is a `static class` with `const int` members, not an `enum`. Pass any integer value to `ElementBuilder.Layer(int)`.
+</Note>
+
+---
+
+## Quick reference: all defaults
+
+```csharp
+// Visual
+BackgroundColor    → Color.Transparent
+BackgroundGradient → Gradient.None
+BorderColor        → Color.Transparent
+BorderWidth        → 0.0f
+Rounded            → Float4(0, 0, 0, 0)
+BoxShadow          → BoxShadow.None
+BackdropBlur       → 0.0f
+
+// Sizing
+Width / Height     → UnitValue.Stretch()
+MinWidth/MinHeight → UnitValue.Pixels(0)
+MaxWidth/MaxHeight → UnitValue.Pixels(float.MaxValue)
+AspectRatio        → -1.0f
+
+// Positioning
+Left/Right/Top/Bottom → UnitValue.Auto
+
+// Child alignment
+ChildLeft/Right/Top/Bottom → UnitValue.Auto
+RowBetween / ColBetween    → UnitValue.Auto
+
+// Padding
+PaddingLeft/Right/Top/Bottom → UnitValue.Pixels(0)
+
+// Transform
+TranslateX/Y  → 0.0f
+ScaleX/Y      → 1.0f
+Rotate        → 0.0f
+OriginX/Y     → 0.5f
+SkewX/Y       → 0.0f
+Transform     → Transform2D.Identity
+
+// Text
+TextColor     → Color.White
+FontSize      → 16.0f
+LineHeight    → 1.0f
+LetterSpacing → 0.0f
+WordSpacing   → 0.0f
+TabSize       → 4
+```

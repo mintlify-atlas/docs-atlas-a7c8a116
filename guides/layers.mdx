@@ -1,0 +1,279 @@
+---
+title: "Rendering Layers for Popups, Modals, and Tooltips"
+sidebarTitle: "Layers"
+description: "Control draw order and input priority with Paper's integer layer system. Learn how Base, Overlay, and Topmost layers work, and how to build popups and modals."
+---
+
+Paper draws and hit-tests elements in layer order. By default everything lives on layer 0 and renders in tree order, but assigning a higher layer to any element causes it to be collected during the frame and drawn last — on top of all lower-layer content — with its input hit-test priority inverted accordingly. This is the foundation for modals, dropdown menus, and tooltips.
+
+## The Named Layer Constants
+
+Three named constants cover the most common tiers. They are plain `int` values spaced 100 apart so you can wedge custom layers between them.
+
+```csharp
+public static class Layer
+{
+    public const int Base    = 0;    // Default. Renders first, hit-tested last.
+    public const int Overlay = 100;  // Modals, dialogs, dropdown panels.
+    public const int Topmost = 200;  // Tooltips, popovers, context menus.
+}
+```
+
+<CardGroup cols={3}>
+<Card title="Layer.Base (0)" icon="layer-group">
+The default layer for all elements. Renders first, so it sits at the back. Hit-tested last, so higher layers always capture input before it does.
+</Card>
+<Card title="Layer.Overlay (100)" icon="rectangle-stack">
+Intended for modal dialogs and dropdown panels. Sits above base content both visually and in the input hit-test stack.
+</Card>
+<Card title="Layer.Topmost (200)" icon="arrow-up-to-line">
+Intended for tooltips and popovers that must float above everything, including modals. The last word in both rendering and input.
+</Card>
+</CardGroup>
+
+You can use any `int` for fine-grained control:
+
+```csharp
+// A layer between Overlay and Topmost — e.g. an in-app notification banner
+paper.Box("NotificationBanner")
+    .Layer(Layer.Overlay + 50)   // = 150, above modals but below tooltips
+    .Width(paper.Stretch())
+    .Height(48);
+```
+
+---
+
+## How the Deferred Rendering System Works
+
+Paper's renderer processes elements in tree order during `EndFrame`. When it encounters an element whose `.Layer` value is higher than the layer currently being rendered, it does **not** draw it inline. Instead it captures the element handle and its current canvas transform in a `SortedDictionary` keyed by layer value.
+
+After all base-layer elements have been drawn, Paper drains the dictionary in ascending key order. Each deferred element is then rendered with the transform it had when it was collected, so it appears in the correct world-space position even though it draws later. Children of a deferred element are rendered in the same deferred pass, which means an entire popup subtree — background, content, close button — all defer together and draw as a coherent unit.
+
+```
+EndFrame render loop:
+  1. Render all Layer.Base (0) elements recursively.
+     → Any element with Layer > 0 is bucketed into deferred[layerValue].
+  2. Drain deferred in ascending order:
+     a. Render all Layer.Overlay (100) elements.
+        → Any child with Layer > 100 goes into deferred[childLayer].
+     b. Render all Layer.Topmost (200) elements.
+     c. … and so on for any custom layers.
+```
+
+<Info>
+Because the transform is captured at collection time, a tooltip that is a child of a transformed parent will still appear at the correct screen position even though it renders in a separate pass.
+</Info>
+
+---
+
+## Assigning a Layer
+
+Call `.Layer(int)` anywhere in the fluent chain on an `ElementBuilder`:
+
+```csharp
+paper.Box("Modal")
+    .Layer(Layer.Overlay)
+    .Size(400, 300)
+    .BackgroundColor(Color.FromArgb(230, 30, 30, 40))
+    .Rounded(12);
+```
+
+---
+
+## Combining Layers with MoveToRoot
+
+Elements rendered at a high layer but still parented deep inside the hierarchy can be visually correct but physically clipped by a parent with `.Clip()` enabled, or affected by ancestor transforms. To fully escape the parent hierarchy, call `paper.MoveToRoot()` while the element is the current parent:
+
+```csharp
+using (paper.Box("DropdownPanel")
+    .Layer(Layer.Overlay)
+    .PositionType(PositionType.SelfDirected)
+    .Left(anchorX)
+    .Top(anchorY)
+    .Width(220)
+    .Enter())
+{
+    // Detach from current parent tree and re-parent under root.
+    // The element retains its SelfDirected position so it stays
+    // anchored at (anchorX, anchorY) in screen space.
+    paper.MoveToRoot();
+
+    // Children are now safe from ancestor clipping
+    foreach (var item in menuItems)
+    {
+        paper.Box("Item", item.ID)
+            .Width(paper.Stretch())
+            .Height(36)
+            .Text(item.Label, uiFont)
+            .OnClick(_ => SelectItem(item));
+    }
+}
+```
+
+<Tip>
+`MoveToRoot()` is a one-shot operation that splices the current parent out of its existing parent's child list and re-inserts it under the root element. Call it once per frame while inside the element's `Enter()` scope.
+</Tip>
+
+---
+
+## Practical Examples
+
+### Tooltip
+
+Tooltips should appear at `Layer.Topmost` so they are never obscured. Use `MoveToRoot()` so they are not clipped by the hovered element's scroll container.
+
+```csharp
+bool isHovered = paper.IsElementHovered(buttonId);
+
+paper.Box("Button", buttonId)
+    .Width(120).Height(36)
+    .BackgroundColor(Color.DarkSlateBlue)
+    .Rounded(6)
+    .Text("Hover me", uiFont)
+    .TextColor(Color.White)
+    .Alignment(TextAlignment.MiddleCenter);
+
+if (isHovered)
+{
+    var mouse = paper.GetPointerPosition();
+
+    using (paper.Box("Tooltip")
+        .Layer(Layer.Topmost)
+        .PositionType(PositionType.SelfDirected)
+        .Left((float)mouse.X + 12)
+        .Top((float)mouse.Y + 12)
+        .Width(paper.Auto)
+        .Height(paper.Auto)
+        .Padding(8, 4)
+        .BackgroundColor(Color.FromArgb(220, 20, 20, 20))
+        .Rounded(4)
+        .Enter())
+    {
+        paper.MoveToRoot();
+
+        paper.Box("TooltipText")
+            .Text("This button does something", uiFont)
+            .FontSize(13)
+            .TextColor(Color.White);
+    }
+}
+```
+
+### Modal Dialog
+
+A modal uses `Layer.Overlay` paired with a full-screen semi-transparent backdrop that blocks input to content below.
+
+```csharp
+if (showModal)
+{
+    // Full-screen backdrop — consumes all pointer events
+    using (paper.Box("ModalBackdrop")
+        .Layer(Layer.Overlay)
+        .PositionType(PositionType.SelfDirected)
+        .Size(paper.Percent(100), paper.Percent(100))
+        .BackgroundColor(Color.FromArgb(140, 0, 0, 0))
+        .Enter())
+    {
+        paper.MoveToRoot();
+
+        // Centred dialog panel
+        using (paper.Box("ModalPanel")
+            .Width(400).Height(paper.Auto)
+            .ChildLeft().ChildRight()   // centre horizontally
+            .ChildTop().ChildBottom()   // centre vertically
+            .BackgroundColor(Color.FromArgb(240, 30, 30, 40))
+            .Rounded(12)
+            .Padding(24)
+            .Enter())
+        {
+            paper.Box("Title")
+                .Text("Confirm Action", boldFont)
+                .FontSize(20)
+                .TextColor(Color.White);
+
+            paper.Box("Body")
+                .Text("Are you sure you want to proceed?", uiFont)
+                .FontSize(14)
+                .TextColor(Color.LightGray);
+
+            using (paper.Row("Buttons").ColBetween(12).Enter())
+            {
+                paper.Box("Cancel")
+                    .Width(paper.Stretch())
+                    .Height(38)
+                    .BackgroundColor(Color.DimGray)
+                    .Rounded(6)
+                    .Text("Cancel", uiFont)
+                    .Alignment(TextAlignment.MiddleCenter)
+                    .OnClick(_ => showModal = false);
+
+                paper.Box("Confirm")
+                    .Width(paper.Stretch())
+                    .Height(38)
+                    .BackgroundColor(Color.CrimsonRed)
+                    .Rounded(6)
+                    .Text("Confirm", uiFont)
+                    .Alignment(TextAlignment.MiddleCenter)
+                    .OnClick(_ => { DoAction(); showModal = false; });
+            }
+        }
+    }
+}
+```
+
+### Dropdown Menu
+
+Dropdowns open at `Layer.Overlay` directly beneath their trigger button, positioned in screen space so they escape scroll containers.
+
+```csharp
+bool isOpen = paper.GetElementStorage<bool>(dropdownId, "open");
+
+var trigger = paper.Box("DropdownTrigger")
+    .Width(160).Height(36)
+    .BackgroundColor(isOpen ? Color.SlateGray : Color.DimGray)
+    .Rounded(6)
+    .Text("Options ▾", uiFont)
+    .Alignment(TextAlignment.MiddleCenter)
+    .OnClick(_ =>
+    {
+        bool current = paper.GetElementStorage<bool>(dropdownId, "open");
+        paper.SetElementStorage(dropdownId, "open", !current);
+    });
+
+if (isOpen)
+{
+    using (paper.Box("DropdownPanel")
+        .Layer(Layer.Overlay)
+        .PositionType(PositionType.SelfDirected)
+        .Left(anchorLeft)
+        .Top(anchorBottom)       // position just below the trigger
+        .Width(160)
+        .Height(paper.Auto)
+        .BackgroundColor(Color.FromArgb(240, 30, 30, 40))
+        .Rounded(4)
+        .Enter())
+    {
+        paper.MoveToRoot();
+
+        foreach (var option in dropdownOptions)
+        {
+            paper.Box("Option", option.Index)
+                .Width(paper.Stretch())
+                .Height(32)
+                .Text(option.Label, uiFont)
+                .Padding(12, 0)
+                .Alignment(TextAlignment.MiddleLeft)
+                .FontSize(14)
+                .TextColor(Color.White)
+                .Hovered
+                    .BackgroundColor(Color.FromArgb(60, 255, 255, 255))
+                    .End()
+                .OnClick(_ =>
+                {
+                    selectedOption = option;
+                    paper.SetElementStorage(dropdownId, "open", false);
+                });
+        }
+    }
+}
+```

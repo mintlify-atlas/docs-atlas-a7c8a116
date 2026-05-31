@@ -1,0 +1,379 @@
+---
+title: "Integrating Host Input with Prowl.Paper"
+sidebarTitle: "Input Integration"
+description: "Learn how to forward mouse, keyboard, scroll, and clipboard input from any host framework into Prowl.Paper's input system every frame."
+---
+
+Prowl.Paper is deliberately agnostic about how input arrives. Rather than hooking into a specific windowing system, it exposes a small set of setter methods that you call once per frame with the current input state from your host (Raylib, OpenTK, SDL, Unity, etc.). This page explains every method you need to call, what each one does, how to query input state from inside your own logic, and includes a complete working example using Raylib.
+
+## Required calls every frame
+
+All input methods live on the `Paper` instance. Call them **before** `paper.BeginFrame(...)`, so that the input state is current when the frame begins processing events.
+
+### Pointer position
+
+```csharp
+paper.SetPointerPosition(float x, float y);
+```
+
+Updates the tracked screen-space pointer position without changing any button state. Call this every frame regardless of whether the pointer has moved.
+
+### Pointer button state
+
+```csharp
+paper.SetPointerState(PaperMouseBtn btn, float x, float y, bool isDown, bool isMove);
+```
+
+Dual-purpose method for reporting both movement and button events:
+
+- When `isMove` is `true`, the `x`/`y` values update the pointer position and the `btn` and `isDown` values are ignored.
+- When `isMove` is `false`, `btn` and `isDown` record a button press or release at position `(x, y)`.
+
+<Note>
+  Paper tracks both current and previous button state internally. Calling `SetPointerState` with `isDown = true` on one frame and `isDown = false` on the next is all that is needed for press/release detection — you do not need to manually manage transitions.
+</Note>
+
+### Mouse wheel
+
+```csharp
+paper.SetPointerWheel(float wheel);
+```
+
+Sets the wheel delta for the current frame. Paper resets this value to zero at the end of each frame, so only call it when a non-zero delta exists.
+
+### Text input characters
+
+```csharp
+paper.AddInputCharacter(string text);
+```
+
+Enqueues one or more printable characters that were typed this frame. Carriage returns (`\r`) are automatically converted to newlines (`\n`). Characters are delivered to the focused element via `OnTextInput` callbacks. Call this once per character produced by your host's character-press event.
+
+### Key state
+
+```csharp
+paper.SetKeyState(PaperKey key, bool isKeyDown);
+```
+
+Reports a key press or release. Call once per key transition (down or up) per frame. Paper's `PaperKey` enum mirrors standard keyboard key names, so most mappings from framework-specific enums are trivial.
+
+---
+
+## Clipboard integration
+
+Paper does not assume a clipboard implementation. Instead, it uses the `IClipboardHandler` interface:
+
+```csharp
+public interface IClipboardHandler
+{
+    string GetClipboardText();
+    void SetClipboardText(string text);
+}
+```
+
+Register your implementation once at startup:
+
+```csharp
+paper.SetClipboardHandler(new MyClipboardHandler());
+```
+
+Without a handler, clipboard operations (`Ctrl+C`, `Ctrl+V`, `Ctrl+X` in text fields) are silently skipped and a warning is printed to the console.
+
+<CodeGroup>
+
+```csharp Raylib clipboard handler
+class RaylibClipboardHandler : IClipboardHandler
+{
+    public string GetClipboardText() => Raylib.GetClipboardText_();
+    public void SetClipboardText(string text) => Raylib.SetClipboardText(text);
+}
+
+// Register at startup:
+paper.SetClipboardHandler(new RaylibClipboardHandler());
+```
+
+```csharp Simple in-memory fallback
+class InMemoryClipboard : IClipboardHandler
+{
+    private string _text = "";
+    public string GetClipboardText() => _text;
+    public void SetClipboardText(string text) => _text = text;
+}
+```
+
+</CodeGroup>
+
+---
+
+## Input query methods
+
+In addition to the per-frame setters, Paper exposes query methods for reading input state from inside your own logic (outside of event callbacks). These are useful for building custom controls or deciding whether to pass input to a game simulation.
+
+### Keyboard queries
+
+```csharp
+bool paper.IsKeyDown(PaperKey key)        // currently held
+bool paper.IsKeyUp(PaperKey key)          // not held
+bool paper.IsKeyPressed(PaperKey key)     // just went down this frame
+bool paper.IsKeyReleased(PaperKey key)    // just went up this frame
+bool paper.IsKeyHeld(PaperKey key, float holdDuration = 0.5f)  // held for N seconds
+bool paper.IsKeyRepeating(PaperKey key)   // auto-repeating this frame
+bool paper.IsKeyPressedOrRepeating(PaperKey key)  // pressed or auto-repeating
+```
+
+### Pointer queries
+
+```csharp
+bool   paper.IsPointerDown(PaperMouseBtn btn)
+bool   paper.IsPointerUp(PaperMouseBtn btn)
+bool   paper.IsPointerPressed(PaperMouseBtn btn)
+bool   paper.IsPointerReleased(PaperMouseBtn btn)
+bool   paper.IsPointerHeld(PaperMouseBtn btn, float holdDuration = 0.5f)
+bool   paper.IsPointerDoubleClick(PaperMouseBtn btn)
+
+Float2 paper.PointerPos        // current screen-space position
+Float2 paper.PointerDelta      // movement since last frame
+float  paper.PointerWheel      // current frame's wheel delta
+
+bool   paper.IsPointerOverRect(float x, float y, float width, float height)
+Float2 paper.GetPointerClickPos(PaperMouseBtn btn) // position of last press
+```
+
+### Focus and capture flags
+
+```csharp
+// True when a TextField or TextArea is focused.
+// Use this to suppress game hotkeys while the user is typing.
+bool paper.WantsCaptureKeyboard
+
+// True when any element is hovered or active.
+// Use this to suppress game mouse input.
+bool paper.WantsCapturePointer
+```
+
+```csharp
+// In your game loop:
+if (!paper.WantsCaptureKeyboard)
+    ProcessGameShortcuts();
+
+if (!paper.WantsCapturePointer)
+    ProcessGameMouseInput();
+```
+
+---
+
+## Auto-repeat settings
+
+Paper implements keyboard auto-repeat independently of the host OS, giving you precise control over repeat timing.
+
+```csharp
+// Enable or disable auto-repeat entirely (default: true)
+paper.KeyAutoRepeatEnabled = true;
+
+// Delay before repeating starts, in seconds (default: 0.8s)
+paper.AutoRepeatDelay = 0.5f;
+
+// Time between repeated key events once repeating starts (default: 0.05s = 20/sec)
+paper.AutoRepeatRate = 0.033f; // ~30 repeats per second
+```
+
+Auto-repeat fires as a virtual `IsKeyPressed` transition, so `OnKeyPressed` callbacks receive `IsRepeat = true` during repeated events, and you can distinguish initial presses from repeats inside your handlers.
+
+---
+
+## OS cursor visibility
+
+Paper can signal your host application to show or hide the system cursor. Subscribe to the `OnCursorVisibilitySet` event during initialization to act on these signals:
+
+```csharp
+paper.OnCursorVisibilitySet += (bool visible) =>
+{
+    // e.g. for Raylib:
+    if (visible) Raylib.ShowCursor();
+    else Raylib.HideCursor();
+};
+```
+
+You can also call `paper.SetCursorVisibility(bool)` directly from your own code at any time.
+
+---
+
+## Complete Raylib integration example
+
+The following is the full input integration from the official Raylib sample, demonstrating every required call in context.
+
+```csharp
+static Paper P;
+
+static void Main(string[] args)
+{
+    int width = 1080, height = 850;
+
+    SetConfigFlags(ConfigFlags.ResizableWindow);
+    InitWindow(width, height, "Raylib Sample");
+    SetTargetFPS(60);
+
+    var renderer = new RaylibCanvasRenderer();
+    P = new Paper(renderer, width, height, new FontAtlasSettings());
+
+    // Register clipboard handler
+    P.SetClipboardHandler(new RaylibClipboardHandler());
+
+    // Hook cursor visibility
+    P.OnCursorVisibilitySet += visible =>
+    {
+        if (visible) ShowCursor(); else HideCursor();
+    };
+
+    while (!WindowShouldClose())
+    {
+        // Handle window resize
+        if (width != GetScreenWidth() || height != GetScreenHeight())
+        {
+            width = GetScreenWidth();
+            height = GetScreenHeight();
+            P.SetResolution(width, height);
+        }
+
+        UpdateInput(); // Feed input to Paper
+
+        float dpiScale = GetScreenWidth() > 0
+            ? (float)GetRenderWidth() / GetScreenWidth()
+            : 1.0f;
+
+        BeginDrawing();
+        ClearBackground(Color.RayWhite);
+
+        P.BeginFrame(GetFrameTime(), dpiScale);
+        RenderUI(); // Your UI drawing code
+        P.EndFrame();
+
+        EndDrawing();
+    }
+}
+
+static void UpdateInput()
+{
+    Vector2 mousePos = GetMousePosition();
+
+    // Report movement every frame
+    P.SetPointerState(PaperMouseBtn.Unknown, mousePos.X, mousePos.Y, false, true);
+
+    // Left button
+    if (IsMouseButtonPressed(MouseButton.Left))
+        P.SetPointerState(PaperMouseBtn.Left, mousePos.X, mousePos.Y, true, false);
+    if (IsMouseButtonReleased(MouseButton.Left))
+        P.SetPointerState(PaperMouseBtn.Left, mousePos.X, mousePos.Y, false, false);
+
+    // Right button
+    if (IsMouseButtonPressed(MouseButton.Right))
+        P.SetPointerState(PaperMouseBtn.Right, mousePos.X, mousePos.Y, true, false);
+    if (IsMouseButtonReleased(MouseButton.Right))
+        P.SetPointerState(PaperMouseBtn.Right, mousePos.X, mousePos.Y, false, false);
+
+    // Middle button
+    if (IsMouseButtonPressed(MouseButton.Middle))
+        P.SetPointerState(PaperMouseBtn.Middle, mousePos.X, mousePos.Y, true, false);
+    if (IsMouseButtonReleased(MouseButton.Middle))
+        P.SetPointerState(PaperMouseBtn.Middle, mousePos.X, mousePos.Y, false, false);
+
+    // Mouse wheel
+    float wheelDelta = GetMouseWheelMove();
+    if (wheelDelta != 0)
+        P.SetPointerWheel(wheelDelta);
+
+    // Text input (printable characters)
+    int key = GetCharPressed();
+    while (key > 0)
+    {
+        P.AddInputCharacter(((char)key).ToString());
+        key = GetCharPressed();
+    }
+
+    // Key states — most PaperKey names match Raylib's KeyboardKey names directly
+    foreach (KeyboardKey k in Enum.GetValues(typeof(KeyboardKey)))
+        if (Enum.TryParse(k.ToString(), out PaperKey paperKey))
+            HandleKey(k, paperKey);
+
+    // Manual mapping for numeric and keypad keys that differ in name
+    HandleKey(KeyboardKey.Zero,       PaperKey.Num0);
+    HandleKey(KeyboardKey.One,        PaperKey.Num1);
+    HandleKey(KeyboardKey.Two,        PaperKey.Num2);
+    HandleKey(KeyboardKey.Three,      PaperKey.Num3);
+    HandleKey(KeyboardKey.Four,       PaperKey.Num4);
+    HandleKey(KeyboardKey.Five,       PaperKey.Num5);
+    HandleKey(KeyboardKey.Six,        PaperKey.Num6);
+    HandleKey(KeyboardKey.Seven,      PaperKey.Num7);
+    HandleKey(KeyboardKey.Eight,      PaperKey.Num8);
+    HandleKey(KeyboardKey.Nine,       PaperKey.Num9);
+    HandleKey(KeyboardKey.Kp0,        PaperKey.Keypad0);
+    HandleKey(KeyboardKey.Kp1,        PaperKey.Keypad1);
+    HandleKey(KeyboardKey.KpDecimal,  PaperKey.KeypadDecimal);
+    HandleKey(KeyboardKey.KpDivide,   PaperKey.KeypadDivide);
+    HandleKey(KeyboardKey.KpMultiply, PaperKey.KeypadMultiply);
+    HandleKey(KeyboardKey.KpSubtract, PaperKey.KeypadMinus);
+    HandleKey(KeyboardKey.KpAdd,      PaperKey.KeypadPlus);
+    HandleKey(KeyboardKey.KpEnter,    PaperKey.KeypadEnter);
+    HandleKey(KeyboardKey.KpEqual,    PaperKey.KeypadEquals);
+}
+
+static void HandleKey(KeyboardKey rayKey, PaperKey paperKey)
+{
+    if (IsKeyPressed(rayKey))
+        P.SetKeyState(paperKey, true);
+    else if (IsKeyReleased(rayKey))
+        P.SetKeyState(paperKey, false);
+}
+
+class RaylibClipboardHandler : IClipboardHandler
+{
+    public string GetClipboardText() => Raylib.GetClipboardText_();
+    public void SetClipboardText(string text) => Raylib.SetClipboardText(text);
+}
+```
+
+<Tip>
+  The reflection-based key loop (`Enum.TryParse`) takes care of the large shared subset of key names between Raylib and Paper automatically. Only keys whose names diverge between the two enums need explicit `HandleKey` calls.
+</Tip>
+
+---
+
+## `PaperKey` reference
+
+Paper's `PaperKey` enum covers the full standard keyboard layout:
+
+<CardGroup cols={2}>
+  <Card title="Alphanumeric & Function" icon="keyboard">
+    `A`–`Z`, `Num0`–`Num9`, `F1`–`F12`, `Space`, `Tab`, `Enter`, `Escape`, `Backspace`
+  </Card>
+  <Card title="Navigation" icon="arrow-up">
+    `Left`, `Right`, `Up`, `Down`, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete`
+  </Card>
+  <Card title="Modifiers" icon="layer-group">
+    `LeftShift`, `RightShift`, `LeftControl`, `RightControl`, `LeftAlt`, `RightAlt`, `LeftSuper`, `RightSuper`
+  </Card>
+  <Card title="Numpad" icon="hashtag">
+    `Keypad0`–`Keypad9`, `KeypadDecimal`, `KeypadPlus`, `KeypadMinus`, `KeypadMultiply`, `KeypadDivide`, `KeypadEnter`, `KeypadEquals`
+  </Card>
+</CardGroup>
+
+## `PaperMouseBtn` reference
+
+```csharp
+public enum PaperMouseBtn
+{
+    Unknown = 0,
+    Left,
+    Middle,
+    Right,
+    Button4,
+    Button5,
+    Button6,
+    Button7,
+    Button8
+}
+```
+
+<Warning>
+  Always call `paper.ClearInput()` after a window focus-loss event if your host delivers no key-up events during that transition. Otherwise, Paper will believe modifier keys such as `LeftShift` are still held across the focus boundary.
+</Warning>

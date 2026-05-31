@@ -1,0 +1,289 @@
+---
+title: "Text Rendering: Plain, Markdown, and Rich Text"
+sidebarTitle: "Text Rendering"
+description: "Learn how to display plain text, parsed CommonMark Markdown, and animated rich text in Paper, plus how to measure text and use interactive input controls."
+---
+
+Paper offers three distinct text rendering modes that you can attach to any element: plain text for static labels, Markdown for content-driven prose, and rich text for dynamic, in-game styled strings with built-in animations. All three modes share the same pool of typographic style properties, so you can mix font size, color, spacing, and wrapping regardless of which mode you choose.
+
+## Plain Text
+
+The simplest way to display text is the `.Text()` method. It binds a string and a font file to the element and renders using the current typographic style properties.
+
+```csharp
+paper.Box("Label")
+    .Width(200)
+    .Height(32)
+    .Text("Hello, Paper!", myFont)
+    .TextColor(Color.White)
+    .FontSize(16)
+    .Alignment(TextAlignment.MiddleCenter);
+```
+
+### Alignment
+
+The `.Alignment(TextAlignment)` method controls both the horizontal and vertical placement of the text block within the element's bounding rectangle.
+
+| Value | Meaning |
+|---|---|
+| `Left` / `Center` / `Right` | Top-aligned, varies horizontally |
+| `MiddleLeft` / `MiddleCenter` / `MiddleRight` | Vertically centered, varies horizontally |
+| `BottomLeft` / `BottomCenter` / `BottomRight` | Bottom-aligned, varies horizontally |
+
+### Wrapping
+
+`.Wrap(TextWrapMode)` controls how text behaves when it overflows the element's width. The available values mirror Scribe's `TextWrapMode` enum — use `NoWrap` for single-line truncation or `Wrap` to reflow across multiple lines.
+
+```csharp
+paper.Box("Description")
+    .Width(300).Height(paper.Auto)
+    .Text(longDescription, myFont)
+    .Wrap(TextWrapMode.Wrap)
+    .FontSize(14)
+    .LineHeight(1.4f);
+```
+
+### Typographic Style Properties
+
+All typographic properties live on `ElementBuilder` and apply to whichever text mode is active on that element.
+
+| Method | Effect |
+|---|---|
+| `.FontSize(float)` | Sets the rendered pixel size of the font |
+| `.TextColor(Color)` | Sets the fill colour of all glyphs |
+| `.LetterSpacing(float)` | Extra pixels between each character |
+| `.WordSpacing(float)` | Extra pixels between each word |
+| `.LineHeight(float)` | Line height as a multiplier of `FontSize` |
+| `.TabSize(int)` | Width of a tab stop expressed in spaces |
+
+---
+
+## Markdown
+
+`.Markdown()` accepts a CommonMark string and parses it into a laid-out document before rendering. Supply separate `FontFile` references for each weight/style combination — Paper uses them when it encounters the corresponding Markdown syntax.
+
+```csharp
+string content = @"
+# Hello Paper
+
+This is **bold** and this is *italic*.
+
+- Item one
+- Item two
+";
+
+paper.Box("Article")
+    .Width(400).Height(paper.Auto)
+    .Markdown(
+        content,
+        font:       regularFont,
+        bold:       boldFont,
+        italic:     italicFont,
+        boldItalic: boldItalicFont,
+        mono:       monoFont
+    )
+    .FontSize(16)
+    .TextColor(Color.White);
+```
+
+<Note>
+Markdown layout is recalculated whenever the available width changes. Placing a Markdown element inside a container that resizes frequently may have a CPU cost; cache the string reference so Paper can detect unchanged content.
+</Note>
+
+---
+
+## Rich Text
+
+Rich text enables per-character inline styling and live animations via XML-style tags embedded directly in the string. Like Markdown, it requires one `FontFile` per variant.
+
+```csharp
+paper.Box("Announcement")
+    .Width(350).Height(paper.Auto)
+    .RichText(
+        "Welcome, <b>hero</b>! Your quest <wave><color=#FF8C00>begins now</color></wave>.",
+        font:       regularFont,
+        bold:       boldFont,
+        italic:     italicFont,
+        boldItalic: boldItalicFont,
+        mono:       monoFont
+    )
+    .FontSize(18)
+    .TextColor(Color.White);
+```
+
+### Styling Tags
+
+| Tag | Effect |
+|---|---|
+| `<b>` … `</b>` | Bold weight |
+| `<i>` … `</i>` | Italic style |
+| `<u>` … `</u>` | Underline |
+| `<s>` … `</s>` | Strikethrough |
+| `<color=#RRGGBB>` or `<color=#AARRGGBB>` | Fill colour |
+| `<size=24>` | Font size override (pixels) |
+| `<font=mono>` | Switch to the mono font variant |
+| `<link=url>` | Marks a clickable hyperlink region |
+
+### Animation Tags
+
+Animation tags make characters move or change over time without any manual update code.
+
+| Tag | Behaviour |
+|---|---|
+| `<shake>` | Random per-character positional jitter |
+| `<wave>` | Vertical sine-wave ripple across characters |
+| `<rainbow>` | Cycles through the full hue spectrum |
+| `<pulse>` | Oscillates opacity between full and translucent |
+| `<fade>` | Fades characters in from transparent |
+| `<jitter>` | High-frequency positional noise (faster than shake) |
+| `<typewriter>` | Reveals characters one at a time left to right |
+
+<Tip>
+Rich text layouts are cached per element across frames so that `<typewriter>` continues from where it left off even after layout recalculates. Call `paper.ResetRichText(handle)` to replay all animations from scratch — useful when a dialogue line changes.
+</Tip>
+
+```csharp
+// Replay typewriter and animations from the beginning
+paper.ResetRichText(dialogueHandle);
+```
+
+### Complete Rich Text Example
+
+<CodeGroup>
+```csharp Dialogue Box
+paper.Box("DialogueBox")
+    .Width(480).Height(paper.Auto)
+    .Padding(16)
+    .BackgroundColor(Color.FromArgb(200, 0, 0, 0))
+    .Rounded(8)
+    .RichText(
+        "<b>Elder:</b> The <rainbow>ancient power</rainbow> stirs… " +
+        "<typewriter>Beware the dark that follows you.</typewriter>",
+        regularFont, boldFont, italicFont, boldItalicFont, monoFont
+    )
+    .FontSize(16)
+    .TextColor(Color.White)
+    .Wrap(TextWrapMode.Wrap);
+```
+
+```csharp Restart Animation
+// Called when the player advances to the next line
+void ShowNextLine(ElementHandle dialogueHandle, string newText)
+{
+    currentLine = newText;
+    paper.ResetRichText(dialogueHandle);
+}
+```
+</CodeGroup>
+
+---
+
+## Measuring Text
+
+You can query text dimensions without creating a visible element. This is useful for dynamically sizing containers or laying out custom-drawn elements.
+
+```csharp
+// Quick measurement — returns a Float2(width, height) in logical units
+Float2 size = paper.MeasureText("Score: 12345", 24f, scoreFont);
+
+// Measurement with full layout settings
+var settings = TextLayoutSettings.Default;
+settings.Font       = myFont;
+settings.PixelSize  = 18;
+settings.MaxWidth   = 300;
+settings.WrapMode   = TextWrapMode.Wrap;
+settings.LineHeight = 1.5f;
+
+Float2 wrapped = paper.MeasureText(myLongString, settings);
+
+// Full layout object — lets you query line widths, cursor positions, etc.
+TextLayout layout = paper.CreateLayout(myLongString, settings);
+Float2 cursorPos  = layout.GetCursorPosition(caretIndex);
+int    hitIndex   = layout.GetCursorIndex(new Float2(clickX, clickY));
+```
+
+<Info>
+`MeasureText` and `CreateLayout` internally scale by `DisplayFramebufferScale` for HiDPI accuracy. The returned sizes and cursor positions are already back-converted to logical units, so you can use them directly in layout calculations.
+</Info>
+
+---
+
+## Text Input Controls
+
+Paper ships two interactive text input widgets that build on top of all the text features above.
+
+### TextField
+
+A single-line editable field with cursor, selection, clipboard, and character filtering.
+
+```csharp
+paper.Box("NameField")
+    .Width(240).Height(36)
+    .BackgroundColor(Color.FromArgb(50, 255, 255, 255))
+    .Rounded(4)
+    .Padding(8, 0)
+    .TextField(
+        value:    playerName,
+        font:     inputFont,
+        onChange: newValue => playerName = newValue
+    );
+```
+
+### TextArea
+
+A multi-line editable area with vertical scrolling and optional word-wrap.
+
+```csharp
+paper.Box("NotesArea")
+    .Width(360).Height(200)
+    .BackgroundColor(Color.FromArgb(50, 255, 255, 255))
+    .Rounded(4)
+    .Padding(8)
+    .TextArea(
+        value:    noteContent,
+        font:     inputFont,
+        onChange: newValue => noteContent = newValue
+    );
+```
+
+### TextInputSettings
+
+For full control over both widgets, pass a `TextInputSettings` struct instead of the simple font/callback overload.
+
+```csharp
+var fieldSettings = new ElementBuilder.TextInputSettings
+{
+    Font             = inputFont,
+    TextColor        = Color.White,
+    Placeholder      = "Enter your name…",
+    PlaceholderColor = Color.FromArgb(120, 200, 200, 200),
+    MaxLength        = 32,
+    ReadOnly         = false,
+    MaskChar         = null,          // Set to '*' for password fields
+    SelectAllOnFocus = true,
+    CharFilter       = (ch, current) => char.IsLetterOrDigit(ch) || ch == '_',
+    ForceValue       = null,          // Push a value programmatically this frame
+};
+
+paper.Box("UsernameField")
+    .Width(240).Height(36)
+    .Rounded(4)
+    .Padding(8, 0)
+    .TextField(playerName, fieldSettings, newValue => playerName = newValue);
+```
+
+<Warning>
+When `MaskChar` is set the field suppresses clipboard copy and cut operations to prevent masked content (e.g. passwords) from being extracted via keyboard shortcuts.
+</Warning>
+
+| Setting | Description |
+|---|---|
+| `Placeholder` | Ghost text shown when the field is empty |
+| `PlaceholderColor` | Colour of the placeholder text |
+| `MaxLength` | Maximum character count (0 = unlimited) |
+| `ReadOnly` | Prevents editing while still allowing selection |
+| `MaskChar` | Replaces every visible character (use for passwords) |
+| `CharFilter` | `Func<char, string, bool>` — return `false` to reject a character |
+| `SelectAllOnFocus` | Selects all content when the field gains focus |
+| `ForceValue` | Override internal state this frame (autocomplete, undo) |
+| `ForceSelectAll` | When set alongside `ForceValue`, selects the pushed text |
